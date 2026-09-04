@@ -37,6 +37,7 @@ static const char *SKILL_EXECUTION_ICON_JPEG_EXT = ".jpeg";
 #define CLAW_SKILL_MAX_REGISTRY_LISTENERS 4
 #define CLAW_SKILL_LAUNCHER_FILE_MAX_BYTES 4096
 #define CLAW_SKILL_LAUNCHER_SCHEMA_VERSION 1
+#define CLAW_SKILL_FRONTMATTER_READ_CHUNK 256
 
 #ifdef CONFIG_CLAW_SKILL_DEBUG_LOG
 #define CLAW_SKILL_DIAGI(...) ESP_LOGI(TAG, __VA_ARGS__)
@@ -480,6 +481,64 @@ static esp_err_t read_file_dup(const char *path, size_t max_bytes, char **out_da
     read_bytes = fread(data, 1, (size_t)size, file);
     fclose(file);
     data[read_bytes] = '\0';
+    *out_data = data;
+    return ESP_OK;
+}
+
+static bool skill_frontmatter_complete(const char *text, size_t len, bool eof, size_t *scan_offset)
+{
+    const char *start = text + *scan_offset;
+    if (strstr(start, "\n---\n") || strstr(start, "\n---\r\n")) {
+        return true;
+    }
+    if (eof && ((len >= 4 && memcmp(text + len - 4, "\n---", 4) == 0) || (len >= 5 && memcmp(text + len - 5, "\n---\r", 5) == 0))) {
+        return true;
+    }
+    const size_t overlap = strlen("\n---\r\n") - 1;
+    *scan_offset = len > overlap ? len - overlap : 0;
+    return false;
+}
+
+static esp_err_t read_skill_frontmatter_dup(const char *path, size_t max_bytes, char **out_data)
+{
+    FILE *file = NULL;
+    char *data = NULL;
+    size_t used = 0;
+    size_t scan_offset = 0;
+    bool complete = false;
+
+    if (!path || !out_data || max_bytes == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    *out_data = NULL;
+    file = fopen(path, "rb");
+    if (!file) {
+        ESP_LOGE(TAG, "read skill metadata open: %s", path);
+        return ESP_ERR_NOT_FOUND;
+    }
+    data = calloc(1, max_bytes + 1);
+    if (!data) {
+        fclose(file);
+        return ESP_ERR_NO_MEM;
+    }
+    while (used < max_bytes) {
+        const size_t remaining = max_bytes - used;
+        const size_t chunk = remaining < CLAW_SKILL_FRONTMATTER_READ_CHUNK ? remaining : CLAW_SKILL_FRONTMATTER_READ_CHUNK;
+        const size_t read_bytes = fread(data + used, 1, chunk, file);
+        used += read_bytes;
+        data[used] = '\0';
+        const bool eof = read_bytes < chunk || used == max_bytes;
+        complete = skill_frontmatter_complete(data, used, eof, &scan_offset);
+        if (complete || eof) {
+            break;
+        }
+    }
+    const bool read_failed = ferror(file) != 0;
+    fclose(file);
+    if (read_failed || !complete) {
+        free(data);
+        return read_failed ? ESP_FAIL : ESP_ERR_INVALID_SIZE;
+    }
     *out_data = data;
     return ESP_OK;
 }
@@ -1036,8 +1095,6 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
 
 static esp_err_t validate_registry_entry(claw_skill_registry_entry_t *entry)
 {
-    char *path = NULL;
-    FILE *file = NULL;
     char expected_file[CLAW_SKILL_MAX_PATH] = {0};
     size_t i;
 
@@ -1071,20 +1128,6 @@ static esp_err_t validate_registry_entry(claw_skill_registry_entry_t *entry)
         ESP_LOGE(TAG, "skill mode: %s", entry->id ? entry->id : "(null)");
         return ESP_ERR_INVALID_ARG;
     }
-
-    path = build_skill_path_dup(entry->root_dir, entry->file);
-    if (!path) {
-        ESP_LOGE(TAG, "skill path alloc: %s", entry->id ? entry->id : "(null)");
-        return ESP_ERR_NO_MEM;
-    }
-    file = fopen(path, "rb");
-    if (!file) {
-        ESP_LOGE(TAG, "skill missing: id=%s path=%s", entry->id ? entry->id : "(null)", path);
-        free(path);
-        return ESP_ERR_NOT_FOUND;
-    }
-    free(path);
-    fclose(file);
 
     return ESP_OK;
 }
@@ -1208,6 +1251,12 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
             free(path);
             continue;
         }
+        if (st.st_size < 0 || (size_t)st.st_size > s_skill->max_file_bytes) {
+            ESP_LOGE(TAG, "skill file %s exceeds limit", relative_path);
+            free(path);
+            err = ESP_ERR_INVALID_SIZE;
+            goto cleanup;
+        }
         if (*entry_count >= CLAW_SKILL_MAX_FILES) {
             ESP_LOGE(TAG, "too many skill files (cap %d) under %s", CLAW_SKILL_MAX_FILES, root_dir);
             err = ESP_ERR_INVALID_SIZE;
@@ -1215,7 +1264,7 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
             goto cleanup;
         }
 
-        err = read_file_dup(path, s_skill->max_file_bytes, &text);
+        err = read_skill_frontmatter_dup(path, s_skill->max_file_bytes, &text);
         free(path);
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "read skill file %s failed: %s", relative_path, esp_err_to_name(err));
