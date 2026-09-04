@@ -1370,8 +1370,7 @@ static esp_err_t load_registry_from_markdown(void)
     }
 
     if (entry_count == 0) {
-        /* Empty is allowed: more directories may be added via
-         * claw_skill_add_directory(), each triggering a reload. */
+        /* Empty is allowed when registered roots contain no skills. */
         ESP_LOGW(TAG, "no skill markdown found in any skills root (registry empty)");
     }
 
@@ -1739,8 +1738,7 @@ esp_err_t claw_skill_init(const claw_skill_config_t *config)
         return err;
     }
 
-    /* The registry starts empty; skills directories are added via
-     * claw_skill_add_directory(), each of which reloads the registry. */
+    /* The registry starts empty until scan roots are registered. */
     s_skill->initialized = 1;
     ESP_LOGI(TAG, "Initialized skill registry (awaiting directories)");
     return ESP_OK;
@@ -1750,7 +1748,6 @@ esp_err_t claw_skill_add_directory(const char *dir)
 {
     esp_err_t err;
     size_t i;
-    uint32_t changed_revision = 0;
 
     if (!s_skill || !s_skill->initialized) {
         ESP_LOGE(TAG, "add dir before init");
@@ -1776,15 +1773,8 @@ esp_err_t claw_skill_add_directory(const char *dir)
         xSemaphoreGive(s_skill->registry_lock);
         return err;
     }
-
-    /* Reload so skills under the new directory are picked up. */
-    err = claw_skill_reload_registry_locked();
-    if (err == ESP_OK) {
-        changed_revision = s_skill->registry_revision;
-    }
     xSemaphoreGive(s_skill->registry_lock);
-    claw_skill_notify_registry_changed(changed_revision);
-    return err;
+    return ESP_OK;
 }
 
 static esp_err_t claw_skill_reload_registry_locked(void)

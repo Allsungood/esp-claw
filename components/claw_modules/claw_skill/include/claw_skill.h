@@ -84,12 +84,13 @@ typedef void (*claw_skill_registry_changed_cb_t)(uint32_t revision,
 esp_err_t claw_skill_init(const claw_skill_config_t *config);
 
 /**
- * @brief  Register a skills directory and reload the registry
+ * @brief  Register a skills directory
  *
  *         Call once per directory. Directories added earlier take priority:
  *         a skill id found in an earlier directory shadows the same id in a
  *         later one. Registering the same directory more than once is
- *         idempotent and does not trigger a reload.
+ *         idempotent. Call claw_skill_reload_registry() after registering all
+ *         directories.
  *
  * @param[in]  dir  Absolute path of the directory to scan for skills
  *
@@ -98,7 +99,7 @@ esp_err_t claw_skill_init(const claw_skill_config_t *config);
  *         - ESP_ERR_INVALID_STATE if called before claw_skill_init()
  *         - ESP_ERR_INVALID_ARG if dir is NULL or empty
  *         - ESP_ERR_NO_MEM if allocation fails
- *         - other errors while reloading the registry
+ *         - other errors while registering the directory
  */
 esp_err_t claw_skill_add_directory(const char *dir);
 
