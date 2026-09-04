@@ -359,7 +359,6 @@ esp_err_t claw_memory_init(const claw_memory_config_t *config)
             return async_err;
         }
     }
-    claw_memory_compact_internal(false);
     ESP_LOGI(TAG, "Initialized memory root=%s", s_memory.memory_root_dir);
     return ESP_OK;
 }
