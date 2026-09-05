@@ -10,7 +10,7 @@ idf_component_register(
     REQUIRES
         claw_cap
         claw_core
-        claw_skill
+        claw_launcher
         display_service
         esp_board_manager
         esp_lcd

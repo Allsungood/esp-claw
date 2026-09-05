@@ -19,9 +19,8 @@
 static struct {
     struct arg_lit *list;
     struct arg_lit *catalog;
-    struct arg_str *register_skill;
-    struct arg_str *unregister_skill;
-    struct arg_str *file;
+    struct arg_str *publish;
+    struct arg_str *remove;
     struct arg_str *activate;
     struct arg_str *session;
     struct arg_end *end;
@@ -68,24 +67,6 @@ static int call_skill_cap(const char *cap_name, const char *input_json, const ch
     return 1;
 }
 
-static char *build_register_skill_json(const char *skill_id,
-                                       const char *file)
-{
-    cJSON *root = NULL;
-    char *rendered = NULL;
-
-    root = cJSON_CreateObject();
-    if (!root) {
-        return NULL;
-    }
-
-    cJSON_AddStringToObject(root, "skill_id", skill_id);
-    cJSON_AddStringToObject(root, "file", file);
-    rendered = cJSON_PrintUnformatted(root);
-    cJSON_Delete(root);
-    return rendered;
-}
-
 static char *build_single_skill_id_json(const char *skill_id)
 {
     cJSON *root = NULL;
@@ -120,7 +101,7 @@ static int skill_func(int argc, char **argv)
     }
 
     operation_count = skill_args.list->count + skill_args.catalog->count +
-                      skill_args.register_skill->count + skill_args.unregister_skill->count +
+                      skill_args.publish->count + skill_args.remove->count +
                       skill_args.activate->count;
     if (operation_count != 1) {
         printf("Exactly one operation must be specified\n");
@@ -133,32 +114,26 @@ static int skill_func(int argc, char **argv)
         return call_skill_cap("list_skill", "{}", session_id);
     }
 
-    if (skill_args.register_skill->count) {
-        if (!skill_args.file->count) {
-            printf("--register requires --file\n");
-            return 1;
-        }
-
-        input_json = build_register_skill_json(skill_args.register_skill->sval[0],
-                                               skill_args.file->sval[0]);
+    if (skill_args.publish->count) {
+        input_json = build_single_skill_id_json(skill_args.publish->sval[0]);
         if (!input_json) {
             printf("Out of memory\n");
             return 1;
         }
 
-        rc = call_skill_cap("register_skill", input_json, session_id);
+        rc = call_skill_cap("publish_skill", input_json, session_id);
         free(input_json);
         return rc;
     }
 
-    if (skill_args.unregister_skill->count) {
-        input_json = build_single_skill_id_json(skill_args.unregister_skill->sval[0]);
+    if (skill_args.remove->count) {
+        input_json = build_single_skill_id_json(skill_args.remove->sval[0]);
         if (!input_json) {
             printf("Out of memory\n");
             return 1;
         }
 
-        rc = call_skill_cap("unregister_skill", input_json, session_id);
+        rc = call_skill_cap("remove_skill", input_json, session_id);
         free(input_json);
         return rc;
     }
@@ -198,9 +173,8 @@ void register_cap_skill(void)
 {
     skill_args.list = arg_lit0("l", "list", "List active skills for one session");
     skill_args.catalog = arg_lit0(NULL, "catalog", "Print the skills catalog JSON");
-    skill_args.register_skill = arg_str0("r", "register", "<skill_id>", "Register or refresh an existing source-file skill markdown file");
-    skill_args.unregister_skill = arg_str0("u", "unregister", "<skill_id>", "Delete one source-file skill markdown file");
-    skill_args.file = arg_str0("f", "file", "<skill_id>/SKILL.md", "Source-file skill markdown path under <storage_root>/skills");
+    skill_args.publish = arg_str0("p", "publish", "<skill_id>", "Validate and publish a runtime skill");
+    skill_args.remove = arg_str0("r", "remove", "<skill_id>", "Recursively remove a runtime skill directory");
     skill_args.activate = arg_str0("a", "activate", "<skill_id>", "Activate one skill");
     skill_args.session = arg_str0("s", "session", "<session_id>", "Session id, defaults to 'default'");
     skill_args.end = arg_end(16);
@@ -210,8 +184,8 @@ void register_cap_skill(void)
         .help = "Skill operations.\n"
         "Examples:\n"
         " skill --catalog\n"
-        " skill --register weather_v2 --file weather_v2/SKILL.md\n"
-        " skill --unregister weather_v2\n"
+        " skill --publish weather_v2\n"
+        " skill --remove weather_v2\n"
         " skill --list --session default\n"
         " skill --activate weather --session default\n",
         .func = skill_func,

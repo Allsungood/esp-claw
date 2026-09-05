@@ -1,0 +1,15 @@
+idf_component_register(
+    SRCS
+        "test_app_main.c"
+    INCLUDE_DIRS
+        "."
+    PRIV_REQUIRES
+        cap_skill_mgr
+        claw_cap
+        claw_launcher
+        claw_skill
+        fatfs
+        unity
+        wear_levelling
+    WHOLE_ARCHIVE
+)

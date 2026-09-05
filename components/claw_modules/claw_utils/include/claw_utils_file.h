@@ -5,13 +5,15 @@
  */
 #pragma once
 
+#include <stddef.h>
+
 #include "esp_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-esp_err_t cap_skill_mgr_register_group(void);
+esp_err_t claw_utils_file_write_atomic(const char *path, const void *data, size_t size);
 
 #ifdef __cplusplus
 }
