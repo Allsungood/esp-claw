@@ -16,8 +16,6 @@
 extern "C" {
 #endif
 
-#define CLAW_SKILL_EXECUTION_EXCLUSIVE_MAX 31
-
 /**
  * @brief  Configuration for claw_skill_init()
  */
@@ -27,7 +25,7 @@ typedef struct {
 } claw_skill_config_t;
 
 /**
- * @brief  How a skill may be managed at runtime, declared in its SKILL.md metadata
+ * @brief  How a skill may be managed at runtime, determined by its storage root
  */
 typedef enum {
     CLAW_SKILL_MANAGE_MODE_READONLY = 0,  /**< Skill is fixed and cannot be modified at runtime */
@@ -41,10 +39,8 @@ typedef struct {
     const char *entry;      /**< Absolute path of the executable script */
     const char *icon;       /**< Optional absolute path of the launcher icon */
     const char *args_json;  /**< Optional compact JSON object string passed to the executable */
-    const char *exclusive;  /**< Optional async-job resource conflict group */
     int         order;      /**< Launcher ordering hint */
     bool        visible;    /**< False hides the entry from launcher consumers */
-    bool        replace;    /**< Replace an active job with the same name/exclusive group */
 } claw_skill_execution_t;
 
 /**

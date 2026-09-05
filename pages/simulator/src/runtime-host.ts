@@ -102,7 +102,7 @@ export class RuntimeHost {
           root: skill.virtualRoot,
           entry: `${skill.virtualRoot}/${skill.entry}`,
           files,
-          peripherals: skill.frontmatter.metadata.peripherals ?? [],
+          peripherals: skill.frontmatter.metadata?.peripherals ?? [],
           capabilityMocks: skill.capabilityMocks,
           simulatorMocks: skill.simulatorMocks,
         },

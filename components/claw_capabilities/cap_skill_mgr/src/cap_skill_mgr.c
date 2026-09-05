@@ -390,8 +390,7 @@ static bool cap_skill_id_is_valid(const char *skill_id)
 static bool cap_skill_launcher_field_is_allowed(const char *key)
 {
     static const char *const keys[] = {
-        "skill_id", "entry", "icon", "args", "exclusive",
-        "order", "visible", "replace",
+        "skill_id", "entry", "icon", "args", "order", "visible",
     };
 
     if (!key) {
@@ -587,11 +586,6 @@ static cJSON *cap_skill_catalog_entry_to_json(const claw_skill_catalog_entry_t *
             }
             cJSON_AddItemToObject(execution, "args", args);
         }
-        if (entry->execution->exclusive) {
-            cJSON_AddStringToObject(execution, "exclusive",
-                                   entry->execution->exclusive);
-        }
-        cJSON_AddBoolToObject(execution, "replace", entry->execution->replace);
         cJSON_AddNumberToObject(execution, "order", entry->execution->order);
         cJSON_AddBoolToObject(execution, "visible", entry->execution->visible);
         cJSON_AddItemToObject(skill, "execution", execution);
@@ -862,10 +856,8 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
     cJSON *entry_item = NULL;
     cJSON *icon_item = NULL;
     cJSON *args_item = NULL;
-    cJSON *exclusive_item = NULL;
     cJSON *order_item = NULL;
     cJSON *visible_item = NULL;
-    cJSON *replace_item = NULL;
     cJSON *launcher = NULL;
     cJSON *skill = NULL;
     char *launcher_text = NULL;
@@ -894,10 +886,8 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
     entry_item = cJSON_GetObjectItemCaseSensitive(root, "entry");
     icon_item = cJSON_GetObjectItemCaseSensitive(root, "icon");
     args_item = cJSON_GetObjectItemCaseSensitive(root, "args");
-    exclusive_item = cJSON_GetObjectItemCaseSensitive(root, "exclusive");
     order_item = cJSON_GetObjectItemCaseSensitive(root, "order");
     visible_item = cJSON_GetObjectItemCaseSensitive(root, "visible");
-    replace_item = cJSON_GetObjectItemCaseSensitive(root, "replace");
 
     if (!cJSON_IsString(skill_id_item) || !skill_id_item->valuestring ||
             !skill_id_item->valuestring[0] ||
@@ -922,14 +912,6 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
         err = ESP_ERR_INVALID_ARG;
         goto cleanup;
     }
-    if (exclusive_item && (!cJSON_IsString(exclusive_item) ||
-            !exclusive_item->valuestring || !exclusive_item->valuestring[0] ||
-            strlen(exclusive_item->valuestring) > CLAW_SKILL_EXECUTION_EXCLUSIVE_MAX)) {
-        cap_skill_write_error(output, output_size, "exclusive must contain 1-31 characters",
-                              skill_id_item->valuestring);
-        err = ESP_ERR_INVALID_ARG;
-        goto cleanup;
-    }
     if (order_item && (!cJSON_IsNumber(order_item) ||
             order_item->valuedouble != (double)order_item->valueint)) {
         cap_skill_write_error(output, output_size, "order must be an integer",
@@ -943,13 +925,6 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
         err = ESP_ERR_INVALID_ARG;
         goto cleanup;
     }
-    if (replace_item && !cJSON_IsBool(replace_item)) {
-        cap_skill_write_error(output, output_size, "replace must be a boolean",
-                              skill_id_item->valuestring);
-        err = ESP_ERR_INVALID_ARG;
-        goto cleanup;
-    }
-
     err = cap_skill_resolve_runtime_paths(skill_id_item->valuestring,
                                           require_registered,
                                           skill_dir, sizeof(skill_dir),
@@ -970,10 +945,9 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
         if (snprintf(payload_path, sizeof(payload_path), "%s/%s", skill_dir,
                      icon_item->valuestring) >= (int)sizeof(payload_path) ||
                 !cap_skill_file_exists(payload_path)) {
-            cap_skill_write_error(output, output_size, "launcher icon file does not exist",
-                                  skill_id_item->valuestring);
-            err = ESP_ERR_NOT_FOUND;
-            goto cleanup;
+            ESP_LOGW(TAG, "launcher icon unavailable, using default: skill=%s icon=%s",
+                     skill_id_item->valuestring, icon_item->valuestring);
+            icon_item = NULL;
         }
     }
 
@@ -999,11 +973,6 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
             goto launcher_alloc_failed;
         }
     }
-    if (exclusive_item && !cJSON_AddStringToObject(launcher, "exclusive",
-                                                    exclusive_item->valuestring)) {
-        err = ESP_ERR_NO_MEM;
-        goto launcher_alloc_failed;
-    }
     if (order_item && !cJSON_AddNumberToObject(launcher, "order", order_item->valueint)) {
         err = ESP_ERR_NO_MEM;
         goto launcher_alloc_failed;
@@ -1013,12 +982,6 @@ static esp_err_t cap_skill_set_launcher_execute_common(const char *input_json,
         err = ESP_ERR_NO_MEM;
         goto launcher_alloc_failed;
     }
-    if (replace_item && !cJSON_AddBoolToObject(launcher, "replace",
-                                               cJSON_IsTrue(replace_item))) {
-        err = ESP_ERR_NO_MEM;
-        goto launcher_alloc_failed;
-    }
-
     launcher_text = cJSON_Print(launcher);
     if (!launcher_text) {
         err = ESP_ERR_NO_MEM;
@@ -1584,10 +1547,8 @@ static const claw_cap_descriptor_t s_skill_descriptors[] = {
         "\"entry\":{\"type\":\"string\"},"
         "\"icon\":{\"type\":\"string\"},"
         "\"args\":{\"type\":\"object\"},"
-        "\"exclusive\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":31},"
         "\"order\":{\"type\":\"integer\"},"
-        "\"visible\":{\"type\":\"boolean\"},"
-        "\"replace\":{\"type\":\"boolean\"}},\"required\":[\"entry\"]}},"
+        "\"visible\":{\"type\":\"boolean\"}},\"required\":[\"entry\"]}},"
         "\"required\":[\"skill_id\",\"file\"]}",
         .execute = cap_skill_publish_execute,
     },
@@ -1629,10 +1590,8 @@ static const claw_cap_descriptor_t s_skill_descriptors[] = {
         "\"entry\":{\"type\":\"string\"},"
         "\"icon\":{\"type\":\"string\"},"
         "\"args\":{\"type\":\"object\"},"
-        "\"exclusive\":{\"type\":\"string\",\"minLength\":1,\"maxLength\":31},"
         "\"order\":{\"type\":\"integer\"},"
-        "\"visible\":{\"type\":\"boolean\"},"
-        "\"replace\":{\"type\":\"boolean\"}},"
+        "\"visible\":{\"type\":\"boolean\"}},"
         "\"required\":[\"skill_id\",\"entry\"]}",
         .execute = cap_skill_set_launcher_execute,
     },

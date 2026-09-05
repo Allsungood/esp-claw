@@ -5,9 +5,8 @@
   "metadata": {
     "cap_groups": [
       "cap_http_request",
-      "cap_boards"
-    ],
-    "manage_mode": "web"
+     "cap_boards"
+    ]
   }
 }
 ---

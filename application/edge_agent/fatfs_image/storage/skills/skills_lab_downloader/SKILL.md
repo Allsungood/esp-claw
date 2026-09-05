@@ -7,9 +7,8 @@
       "cap_lua",
       "cap_http_request",
       "cap_boards",
-      "cap_skill"
-    ],
-    "manage_mode": "readonly"
+     "cap_skill"
+    ]
   }
 }
 ---

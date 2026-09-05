@@ -26,7 +26,6 @@ static const char *SKILL_FRONTMATTER_DELIM = "---";
 static const char *SKILL_DOCUMENT_NAME = "SKILL.md";
 static const char *SKILL_LAUNCHER_DEFINITION_NAME = "launcher.json";
 static const char *SKILL_MANAGE_MODE_READONLY = "readonly";
-static const char *SKILL_MANAGE_MODE_WEB = "web";
 static const char *SKILL_MANAGE_MODE_RUNTIME = "runtime";
 static const char *SKILL_EXECUTION_ENTRY_EXT = ".lua";
 static const char *SKILL_EXECUTION_ICON_JPG_EXT = ".jpg";
@@ -49,10 +48,8 @@ typedef struct {
     char *entry;
     char *icon;
     char *args_json;
-    char *exclusive;
     int order;
     bool visible;
-    bool replace;
 } claw_skill_execution_owned_t;
 
 typedef struct {
@@ -186,8 +183,17 @@ static void free_execution(claw_skill_execution_owned_t *execution)
     free(execution->entry);
     free(execution->icon);
     free(execution->args_json);
-    free(execution->exclusive);
     memset(execution, 0, sizeof(*execution));
+}
+
+static void clear_registry_execution(claw_skill_registry_entry_t *entry)
+{
+    if (!entry) {
+        return;
+    }
+    free_execution(&entry->execution);
+    memset(&entry->execution_view, 0, sizeof(entry->execution_view));
+    entry->has_execution = false;
 }
 
 static void free_registry_entry(claw_skill_registry_entry_t *entry)
@@ -201,7 +207,7 @@ static void free_registry_entry(claw_skill_registry_entry_t *entry)
     free(entry->summary);
     free(entry->skill_dir);
     free_string_array(entry->cap_groups, entry->cap_group_count);
-    free_execution(&entry->execution);
+    clear_registry_execution(entry);
     memset(entry, 0, sizeof(*entry));
 }
 
@@ -280,7 +286,7 @@ static bool is_skill_document_file(const char *name)
 
     base = strrchr(name, '/');
     base = base ? base + 1 : name;
-    return strcasecmp(base, SKILL_DOCUMENT_NAME) == 0;
+    return strcmp(base, SKILL_DOCUMENT_NAME) == 0;
 }
 
 static bool skill_path_is_valid(const char *path)
@@ -635,33 +641,6 @@ static esp_err_t json_dup_optional_unique_string_array(cJSON *object,
     return ESP_OK;
 }
 
-static esp_err_t json_parse_manage_mode(cJSON *object, const char *key, claw_skill_manage_mode_t *out_mode)
-{
-    cJSON *item;
-
-    if (!object || !key || !out_mode) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    item = cJSON_GetObjectItemCaseSensitive(object, key);
-    if (!cJSON_IsString(item) || !item->valuestring || !item->valuestring[0]) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    if (strcmp(item->valuestring, SKILL_MANAGE_MODE_READONLY) == 0) {
-        *out_mode = CLAW_SKILL_MANAGE_MODE_READONLY;
-        return ESP_OK;
-    }
-    if (strcmp(item->valuestring, SKILL_MANAGE_MODE_WEB) == 0) {
-        *out_mode = CLAW_SKILL_MANAGE_MODE_READONLY;
-        return ESP_OK;
-    }
-    if (strcmp(item->valuestring, SKILL_MANAGE_MODE_RUNTIME) == 0) {
-        *out_mode = CLAW_SKILL_MANAGE_MODE_RUNTIME;
-        return ESP_OK;
-    }
-    return ESP_ERR_INVALID_ARG;
-}
-
 static const char *manage_mode_to_string(claw_skill_manage_mode_t mode)
 {
     switch (mode) {
@@ -723,8 +702,7 @@ static esp_err_t json_dup_optional_string(cJSON *object, const char *key, char *
 static bool work_definition_key_is_allowed(const char *key)
 {
     static const char *const keys[] = {
-        "schema_version", "entry", "icon", "args", "exclusive",
-        "order", "visible", "replace",
+        "schema_version", "entry", "icon", "args", "order", "visible",
     };
 
     if (!key) {
@@ -746,12 +724,10 @@ static esp_err_t load_skill_launcher_definition(claw_skill_registry_entry_t *ent
     cJSON *schema_version = NULL;
     cJSON *order = NULL;
     cJSON *visible = NULL;
-    cJSON *replace = NULL;
     cJSON *field = NULL;
     char *relative_entry = NULL;
     char *relative_icon = NULL;
     char *args_json = NULL;
-    char *exclusive = NULL;
     char *absolute_entry = NULL;
     char *absolute_icon = NULL;
     struct stat st = {0};
@@ -834,23 +810,6 @@ static esp_err_t load_skill_launcher_definition(claw_skill_registry_entry_t *ent
         goto cleanup;
     }
 
-    err = json_dup_optional_string(launcher, "exclusive", &exclusive);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "invalid launcher exclusive group: id=%s",
-                 entry->id ? entry->id : "(null)");
-        goto cleanup;
-    }
-    if (exclusive &&
-            (!exclusive[0] || strlen(exclusive) >
-                CLAW_SKILL_EXECUTION_EXCLUSIVE_MAX)) {
-        ESP_LOGE(TAG,
-                 "invalid launcher exclusive group length: id=%s max=%u",
-                 entry->id ? entry->id : "(null)",
-                 (unsigned)CLAW_SKILL_EXECUTION_EXCLUSIVE_MAX);
-        err = ESP_ERR_INVALID_ARG;
-        goto cleanup;
-    }
-
     order = cJSON_GetObjectItemCaseSensitive(launcher, "order");
     if (order && (!cJSON_IsNumber(order) ||
             order->valuedouble != (double)order->valueint)) {
@@ -864,13 +823,6 @@ static esp_err_t load_skill_launcher_definition(claw_skill_registry_entry_t *ent
         err = ESP_ERR_INVALID_ARG;
         goto cleanup;
     }
-    replace = cJSON_GetObjectItemCaseSensitive(launcher, "replace");
-    if (replace && !cJSON_IsBool(replace)) {
-        ESP_LOGE(TAG, "invalid launcher replace flag: id=%s", entry->id ? entry->id : "(null)");
-        err = ESP_ERR_INVALID_ARG;
-        goto cleanup;
-    }
-
     absolute_entry = build_skill_payload_path_dup(entry->skill_dir, relative_entry);
     if (!absolute_entry) {
         err = ESP_ERR_NO_MEM;
@@ -887,22 +839,17 @@ static esp_err_t load_skill_launcher_definition(claw_skill_registry_entry_t *ent
     entry->execution.entry = absolute_entry;
     entry->execution.icon = absolute_icon;
     entry->execution.args_json = args_json;
-    entry->execution.exclusive = exclusive;
     entry->execution.order = order ? order->valueint : default_order;
     entry->execution.visible = visible ? cJSON_IsTrue(visible) : true;
-    entry->execution.replace = replace ? cJSON_IsTrue(replace) : false;
     entry->execution_view.entry = entry->execution.entry;
     entry->execution_view.icon = entry->execution.icon;
     entry->execution_view.args_json = entry->execution.args_json;
-    entry->execution_view.exclusive = entry->execution.exclusive;
     entry->execution_view.order = entry->execution.order;
     entry->execution_view.visible = entry->execution.visible;
-    entry->execution_view.replace = entry->execution.replace;
     entry->has_execution = true;
     absolute_entry = NULL;
     absolute_icon = NULL;
     args_json = NULL;
-    exclusive = NULL;
 
 cleanup:
     cJSON_Delete(launcher);
@@ -911,7 +858,6 @@ cleanup:
     free(relative_entry);
     free(relative_icon);
     free(args_json);
-    free(exclusive);
     free(absolute_entry);
     free(absolute_icon);
     return err;
@@ -1061,7 +1007,7 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
     }
 
     metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
-    if (!cJSON_IsObject(metadata)) {
+    if (metadata && !cJSON_IsObject(metadata)) {
         ESP_LOGE(TAG, "meta metadata: %s", filename);
         cJSON_Delete(root);
         return ESP_ERR_INVALID_ARG;
@@ -1079,11 +1025,8 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
     if (err == ESP_OK) {
         err = json_dup_required_string(root, "description", &entry->summary);
     }
-    if (err == ESP_OK) {
+    if (err == ESP_OK && metadata) {
         err = json_dup_optional_unique_string_array(metadata, "cap_groups", &entry->cap_groups, &entry->cap_group_count);
-    }
-    if (err == ESP_OK) {
-        err = json_parse_manage_mode(metadata, "manage_mode", &entry->manage_mode);
     }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "meta fields: %s", filename);
@@ -1114,7 +1057,7 @@ static esp_err_t validate_registry_entry(claw_skill_registry_entry_t *entry)
         ESP_LOGE(TAG, "skill expected path too long: id=%s", entry->id);
         return ESP_ERR_INVALID_SIZE;
     }
-    if (strcasecmp(entry->file, expected_file) != 0) {
+    if (strcmp(entry->file, expected_file) != 0) {
         ESP_LOGE(TAG, "skill path must be %s, got %s", expected_file, entry->file);
         return ESP_ERR_INVALID_ARG;
     }
@@ -1132,7 +1075,7 @@ static esp_err_t validate_registry_entry(claw_skill_registry_entry_t *entry)
     return ESP_OK;
 }
 
-static esp_err_t validate_skill_launcher_files(const claw_skill_registry_entry_t *entry)
+static esp_err_t validate_skill_launcher_files(claw_skill_registry_entry_t *entry)
 {
     FILE *file = NULL;
 
@@ -1154,9 +1097,12 @@ static esp_err_t validate_skill_launcher_files(const claw_skill_registry_entry_t
     if (entry->execution.icon) {
         file = fopen(entry->execution.icon, "rb");
         if (!file) {
-            ESP_LOGE(TAG, "launcher icon missing: id=%s path=%s",
+            ESP_LOGW(TAG, "launcher icon missing, using default: id=%s path=%s",
                      entry->id ? entry->id : "(null)", entry->execution.icon);
-            return ESP_ERR_NOT_FOUND;
+            free(entry->execution.icon);
+            entry->execution.icon = NULL;
+            entry->execution_view.icon = NULL;
+            return ESP_OK;
         }
         fclose(file);
     }
@@ -1281,6 +1227,8 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
         memset(&(*entries)[*entry_count], 0, sizeof((*entries)[*entry_count]));
         entry = &(*entries)[*entry_count];
         entry->root_dir = root_dir;
+        /* The primary root is writable; later roots are firmware-owned. */
+        entry->manage_mode = root_dir == s_skill->roots[0] ? CLAW_SKILL_MANAGE_MODE_RUNTIME : CLAW_SKILL_MANAGE_MODE_READONLY;
 
         err = parse_skill_document_metadata(relative_path, text, entry);
         free(text);
@@ -1304,17 +1252,16 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
 
         err = load_skill_launcher_definition(entry, (int)*entry_count);
         if (err != ESP_OK) {
-            ESP_LOGE(TAG, "skill launcher definition %s failed: %s",
+            ESP_LOGW(TAG, "skill launcher disabled for %s: %s",
                      relative_path, esp_err_to_name(err));
-            free_registry_entry(entry);
-            goto cleanup;
-        }
-
-        err = validate_skill_launcher_files(entry);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "skill launcher files %s validation failed: %s", relative_path, esp_err_to_name(err));
-            free_registry_entry(entry);
-            goto cleanup;
+            err = ESP_OK;
+        } else {
+            err = validate_skill_launcher_files(entry);
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "skill launcher disabled for %s: %s", relative_path, esp_err_to_name(err));
+                clear_registry_execution(entry);
+                err = ESP_OK;
+            }
         }
 
         /* A skill id already loaded from an earlier (higher-priority) root wins;

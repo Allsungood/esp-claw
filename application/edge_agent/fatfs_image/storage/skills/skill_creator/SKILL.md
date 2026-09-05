@@ -5,8 +5,7 @@
   "metadata": {
     "cap_groups": [
       "cap_skill"
-    ],
-    "manage_mode": "readonly"
+    ]
   }
 }
 ---
@@ -106,8 +105,7 @@ Use this `SKILL.md` pattern for a Lua-backed skill:
   "metadata": {
     "cap_groups": [
       "cap_lua"
-    ],
-    "manage_mode": "readonly"
+    ]
   }
 }
 ---

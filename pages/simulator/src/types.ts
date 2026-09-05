@@ -16,12 +16,11 @@ export interface SkillFrontmatter {
   name: string
   description: string
   author?: string
-  metadata: {
+  metadata?: {
     category?: string[]
     peripherals?: string[]
     tags?: string[]
     cap_groups?: string[]
-    manage_mode?: string
   }
   execution?: {
     entry?: string
