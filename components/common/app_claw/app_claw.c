@@ -598,10 +598,10 @@ static esp_err_t init_skills(const app_claw_storage_paths_t *paths)
                             .max_file_bytes = 20 * 1024,
                         }),
                         TAG, "Failed to init claw_skill");
-    /* Register scan roots in priority order*/
-    ESP_RETURN_ON_ERROR(claw_skill_add_directory(paths->system_skills_root_dir), TAG, "Failed to add system skills directory");
+    /* Writable skills take priority over firmware-baked skills. */
     ESP_RETURN_ON_ERROR(claw_skill_add_directory(paths->skills_root_dir), TAG, "Failed to add skills directory");
-    return ESP_OK;
+    ESP_RETURN_ON_ERROR(claw_skill_add_directory(paths->system_skills_root_dir), TAG, "Failed to add system skills directory");
+    return claw_skill_reload_registry();
 }
 #endif
 
