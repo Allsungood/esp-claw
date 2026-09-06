@@ -113,6 +113,7 @@ Rules:
 - `args` is optional. It must be a JSON object and is passed to the launcher script as compact JSON.
 - `order` is optional and must be an integer. Lower values appear earlier in the launcher.
 - `visible` is optional and must be a boolean. It defaults to `true`; set it to `false` to keep the launcher definition without showing the app.
+- Unknown properties are ignored so newer launcher definitions remain compatible with older runtimes.
 - Launcher paths must not be absolute, contain `..`, or escape the skill directory.
 - The launcher uses `display_name` as the app title, falling back to the skill id.
 - A missing or invalid `launcher.json`, or a missing `entry` file, disables only the launcher entry and does not prevent the skill from being published.
@@ -204,3 +205,4 @@ Rules:
 - The project must not contain duplicate skill ids.
 - The project must not contain duplicate skill output file paths.
 - Do not expose the same user-facing action through multiple skills or script indexes.
+- At runtime, malformed or unreadable individual skills are logged and skipped without preventing other valid skills from loading.

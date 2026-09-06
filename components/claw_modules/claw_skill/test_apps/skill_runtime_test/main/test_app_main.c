@@ -26,6 +26,7 @@
 #define TEST_SESSION_ROOT    TEST_BASE_PATH "/sessions"
 #define TEST_SKILL_ID        "runtime_test"
 #define TEST_READONLY_ID     "readonly_test"
+#define TEST_INVALID_ID      "invalid_test"
 #define TEST_OUTPUT_SIZE     2048
 
 static const char *TAG = "skill_runtime_test";
@@ -71,7 +72,8 @@ static void create_skill_fixture(void)
     write_text(TEST_RUNTIME_ROOT "/" TEST_SKILL_ID "/assets/icon.jpg", "jpeg\n");
     write_text(TEST_RUNTIME_ROOT "/" TEST_SKILL_ID "/launcher.json",
                "{\"schema_version\":1,\"entry\":\"scripts/main.lua\",\"display_name\":\"Runtime Test\","
-               "\"icon\":\"assets/icon.jpg\",\"args\":{\"mode\":\"basic\"},\"order\":7,\"visible\":true}");
+               "\"icon\":\"assets/icon.jpg\",\"args\":{\"mode\":\"basic\"},\"order\":7,\"visible\":true,"
+               "\"future_option\":{\"enabled\":true}}");
 }
 
 static void create_readonly_fixture(void)
@@ -81,6 +83,28 @@ static void create_readonly_fixture(void)
                "---\n"
                "{\"name\":\"readonly_test\",\"description\":\"Readonly test skill.\"}\n"
                "---\n\nReadonly content.\n");
+}
+
+static void create_invalid_fixture(void)
+{
+    make_dir(TEST_RUNTIME_ROOT "/" TEST_INVALID_ID);
+    write_text(TEST_RUNTIME_ROOT "/" TEST_INVALID_ID "/SKILL.md",
+               "---\n"
+               "{\"name\":\"invalid_test\",\"description\":}\n"
+               "---\n\nInvalid content.\n");
+}
+
+typedef struct {
+    bool found_valid;
+    bool found_invalid;
+} skill_catalog_result_t;
+
+static esp_err_t collect_skill(const claw_skill_catalog_entry_t *entry, void *user_ctx)
+{
+    skill_catalog_result_t *result = user_ctx;
+    result->found_valid |= strcmp(entry->id, TEST_SKILL_ID) == 0;
+    result->found_invalid |= strcmp(entry->id, TEST_INVALID_ID) == 0;
+    return ESP_OK;
 }
 
 typedef struct {
@@ -180,6 +204,19 @@ TEST_CASE("skill tools publish activate and remove complete runtime directory", 
     launchers = read_launchers();
     TEST_ASSERT_FALSE(launchers.found);
     TEST_ASSERT_EQUAL(0, launchers.count);
+}
+
+TEST_CASE("skill registry skips invalid skill metadata", "[skill][registry]")
+{
+    skill_catalog_result_t result = {0};
+
+    create_skill_fixture();
+    create_invalid_fixture();
+    TEST_ASSERT_EQUAL(ESP_OK, claw_skill_reload_registry());
+    TEST_ASSERT_EQUAL(ESP_OK, claw_skill_foreach_catalog_entry(collect_skill, &result));
+    TEST_ASSERT_TRUE(result.found_valid);
+    TEST_ASSERT_FALSE(result.found_invalid);
+    TEST_ASSERT_EQUAL(ESP_ERR_NOT_FOUND, claw_skill_publish(TEST_INVALID_ID));
 }
 
 static void init_test_runtime(void)

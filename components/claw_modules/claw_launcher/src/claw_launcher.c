@@ -269,17 +269,6 @@ static esp_err_t finish_file_update(const char *path, bool had_previous, bool co
     return ESP_OK;
 }
 
-static bool key_is_allowed(const char *key)
-{
-    static const char *const keys[] = {"schema_version", "entry", "icon", "display_name", "args", "order", "visible"};
-    for (size_t i = 0; key && i < sizeof(keys) / sizeof(keys[0]); i++) {
-        if (strcmp(key, keys[i]) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static esp_err_t parse_entry(const claw_skill_catalog_entry_t *skill, size_t default_order, claw_launcher_owned_entry_t *out)
 {
     char *launcher_path = path_join_dup(skill->skill_dir, CLAW_LAUNCHER_FILENAME);
@@ -301,14 +290,6 @@ static esp_err_t parse_entry(const claw_skill_catalog_entry_t *skill, size_t def
         err = ESP_ERR_INVALID_ARG;
         goto cleanup;
     }
-    cJSON *field = NULL;
-    cJSON_ArrayForEach(field, root) {
-        if (!key_is_allowed(field->string)) {
-            err = ESP_ERR_INVALID_ARG;
-            goto cleanup;
-        }
-    }
-
     cJSON *schema = cJSON_GetObjectItemCaseSensitive(root, "schema_version");
     cJSON *entry = cJSON_GetObjectItemCaseSensitive(root, "entry");
     cJSON *icon = cJSON_GetObjectItemCaseSensitive(root, "icon");

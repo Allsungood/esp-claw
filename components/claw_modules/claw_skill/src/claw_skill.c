@@ -718,7 +718,7 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
     }
     err = extract_skill_frontmatter_json(text, &json_start, &json_end, &body);
     if (err != ESP_OK) {
-        ESP_LOGE(TAG, "frontmatter: %s", filename);
+        ESP_LOGW(TAG, "invalid frontmatter: %s", filename);
         return ESP_ERR_INVALID_ARG;
     }
     (void)body;
@@ -732,14 +732,14 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
     root = cJSON_Parse(json_text);
     free(json_text);
     if (!root || !cJSON_IsObject(root)) {
-        ESP_LOGE(TAG, "meta json: %s", filename);
+        ESP_LOGW(TAG, "invalid metadata JSON: %s", filename);
         cJSON_Delete(root);
         return ESP_ERR_INVALID_ARG;
     }
 
     metadata = cJSON_GetObjectItemCaseSensitive(root, "metadata");
     if (metadata && !cJSON_IsObject(metadata)) {
-        ESP_LOGE(TAG, "meta metadata: %s", filename);
+        ESP_LOGW(TAG, "metadata must be an object: %s", filename);
         cJSON_Delete(root);
         return ESP_ERR_INVALID_ARG;
     }
@@ -759,8 +759,8 @@ static esp_err_t parse_skill_document_metadata(const char *filename, const char 
     if (err == ESP_OK && metadata) {
         err = json_dup_optional_unique_string_array(metadata, "cap_groups", &entry->cap_groups, &entry->cap_group_count);
     }
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "meta fields: %s", filename);
+    if (err != ESP_OK && err != ESP_ERR_NO_MEM) {
+        ESP_LOGW(TAG, "invalid metadata fields: %s", filename);
     }
 
     cJSON_Delete(root);
@@ -773,33 +773,33 @@ static esp_err_t validate_registry_entry(claw_skill_registry_entry_t *entry)
     size_t i;
 
     if (!entry || !entry->id || !entry->file || !entry->summary) {
-        ESP_LOGE(TAG, "skill meta: missing fields");
+        ESP_LOGW(TAG, "skill metadata has missing fields");
         return ESP_ERR_INVALID_ARG;
     }
     if (!claw_skill_id_is_valid(entry->id)) {
-        ESP_LOGE(TAG, "skill id: %s", entry->id ? entry->id : "(null)");
+        ESP_LOGW(TAG, "invalid skill id: %s", entry->id ? entry->id : "(null)");
         return ESP_ERR_INVALID_ARG;
     }
     if (!skill_path_is_valid(entry->file) || !is_skill_document_file(entry->file)) {
-        ESP_LOGE(TAG, "skill path: id=%s file=%s", entry->id ? entry->id : "(null)", entry->file ? entry->file : "(null)");
+        ESP_LOGW(TAG, "invalid skill path: id=%s file=%s", entry->id ? entry->id : "(null)", entry->file ? entry->file : "(null)");
         return ESP_ERR_INVALID_ARG;
     }
     if (snprintf(expected_file, sizeof(expected_file), "%s/%s", entry->id, SKILL_DOCUMENT_NAME) >= (int)sizeof(expected_file)) {
-        ESP_LOGE(TAG, "skill expected path too long: id=%s", entry->id);
+        ESP_LOGW(TAG, "skill expected path too long: id=%s", entry->id);
         return ESP_ERR_INVALID_SIZE;
     }
     if (strcmp(entry->file, expected_file) != 0) {
-        ESP_LOGE(TAG, "skill path must be %s, got %s", expected_file, entry->file);
+        ESP_LOGW(TAG, "skill path must be %s, got %s", expected_file, entry->file);
         return ESP_ERR_INVALID_ARG;
     }
     for (i = 0; i < entry->cap_group_count; i++) {
         if (!entry->cap_groups[i] || !entry->cap_groups[i][0]) {
-            ESP_LOGE(TAG, "skill cap_group: id=%s idx=%u", entry->id ? entry->id : "(null)", (unsigned)i);
+            ESP_LOGW(TAG, "invalid skill cap_group: id=%s idx=%u", entry->id ? entry->id : "(null)", (unsigned)i);
             return ESP_ERR_INVALID_ARG;
         }
     }
     if (entry->manage_mode != CLAW_SKILL_MANAGE_MODE_READONLY && entry->manage_mode != CLAW_SKILL_MANAGE_MODE_RUNTIME) {
-        ESP_LOGE(TAG, "skill mode: %s", entry->id ? entry->id : "(null)");
+        ESP_LOGW(TAG, "invalid skill mode: %s", entry->id ? entry->id : "(null)");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -860,13 +860,13 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
         }
         if (relative_dir && relative_dir[0]) {
             if (snprintf(relative_path, sizeof(relative_path), "%s/%s", relative_dir, item->d_name) >= (int)sizeof(relative_path)) {
-                err = ESP_ERR_INVALID_SIZE;
-                goto cleanup;
+                ESP_LOGW(TAG, "skill path too long under %s, skipping", dir_path);
+                continue;
             }
         } else {
             if (snprintf(relative_path, sizeof(relative_path), "%s", item->d_name) >= (int)sizeof(relative_path)) {
-                err = ESP_ERR_INVALID_SIZE;
-                goto cleanup;
+                ESP_LOGW(TAG, "skill path too long under %s, skipping", dir_path);
+                continue;
             }
         }
         path = build_skill_path_dup(root_dir, relative_path);
@@ -875,6 +875,7 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
             goto cleanup;
         }
         if (stat(path, &st) != 0) {
+            ESP_LOGW(TAG, "stat skill path failed, skipping: path=%s errno=%d", path, errno);
             free(path);
             continue;
         }
@@ -895,10 +896,9 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
             continue;
         }
         if (st.st_size < 0 || (size_t)st.st_size > s_skill->max_file_bytes) {
-            ESP_LOGE(TAG, "skill file %s exceeds limit", relative_path);
+            ESP_LOGW(TAG, "skill file exceeds limit, skipping: %s", relative_path);
             free(path);
-            err = ESP_ERR_INVALID_SIZE;
-            goto cleanup;
+            continue;
         }
         if (*entry_count >= CLAW_SKILL_MAX_FILES) {
             ESP_LOGE(TAG, "too many skill files (cap %d) under %s", CLAW_SKILL_MAX_FILES, root_dir);
@@ -907,11 +907,15 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
             goto cleanup;
         }
 
-        err = read_skill_frontmatter_dup(path, s_skill->max_file_bytes, &text);
+        esp_err_t skill_err = read_skill_frontmatter_dup(path, s_skill->max_file_bytes, &text);
         free(path);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "read skill file %s failed: %s", relative_path, esp_err_to_name(err));
-            goto cleanup;
+        if (skill_err != ESP_OK) {
+            if (skill_err == ESP_ERR_NO_MEM) {
+                err = skill_err;
+                goto cleanup;
+            }
+            ESP_LOGW(TAG, "read skill file failed, skipping: file=%s err=%s", relative_path, esp_err_to_name(skill_err));
+            continue;
         }
 
         grown = realloc(*entries, sizeof(**entries) * (*entry_count + 1));
@@ -927,24 +931,23 @@ static esp_err_t load_registry_dir_recursive(const char *root_dir,
         /* The primary root is writable; later roots are firmware-owned. */
         entry->manage_mode = root_dir == s_skill->roots[0] ? CLAW_SKILL_MANAGE_MODE_RUNTIME : CLAW_SKILL_MANAGE_MODE_READONLY;
 
-        err = parse_skill_document_metadata(relative_path, text, entry);
+        skill_err = parse_skill_document_metadata(relative_path, text, entry);
         free(text);
-        if (err == ESP_ERR_INVALID_ARG) {
-            ESP_LOGE(TAG, "skill file %s has invalid metadata", relative_path);
+        if (skill_err != ESP_OK) {
             free_registry_entry(entry);
-            goto cleanup;
-        }
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "skill file %s metadata parse failed: %s", relative_path, esp_err_to_name(err));
-            free_registry_entry(entry);
-            goto cleanup;
+            if (skill_err == ESP_ERR_NO_MEM) {
+                err = skill_err;
+                goto cleanup;
+            }
+            ESP_LOGW(TAG, "invalid skill metadata, skipping: file=%s err=%s", relative_path, esp_err_to_name(skill_err));
+            continue;
         }
 
-        err = validate_registry_entry(entry);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "skill file %s validation failed: %s", relative_path, esp_err_to_name(err));
+        skill_err = validate_registry_entry(entry);
+        if (skill_err != ESP_OK) {
             free_registry_entry(entry);
-            goto cleanup;
+            ESP_LOGW(TAG, "invalid skill definition, skipping: file=%s err=%s", relative_path, esp_err_to_name(skill_err));
+            continue;
         }
 
         /* A skill id already loaded from an earlier (higher-priority) root wins;
