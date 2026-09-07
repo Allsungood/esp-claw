@@ -115,6 +115,11 @@ dependencies:
   claw_skill:
     path: ../../claw_modules/claw_skill
 
+  claw_launcher:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_SKILL_MGR} == True
+    path: ../../claw_modules/claw_launcher
+
   claw_utils:
     path: ../../claw_modules/claw_utils
 

@@ -4,9 +4,8 @@
   "description": "Search the public web for current information through the configured Tavily or Brave provider.",
   "metadata": {
     "cap_groups": [
-      "cap_web_search"
-    ],
-    "manage_mode": "readonly"
+     "cap_web_search"
+    ]
   }
 }
 ---

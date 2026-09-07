@@ -4,9 +4,8 @@
   "description": "Take one photo with the first available video camera and save it as a JPEG file.",
   "metadata": {
     "cap_groups": [
-      "cap_lua"
-    ],
-    "manage_mode": "readonly"
+     "cap_lua"
+    ]
   }
 }
 ---

@@ -26,8 +26,7 @@ ESP-Claw 从每个 Skill 的 `SKILL.md` JSON frontmatter 读取元数据。目�
 
 其中 `name` 是模型可见的 Skill ID，`description` 是模型可见的摘要。
 
-`metadata.manage_mode` 取值为 `readonly`、`web` 或 `runtime`。
-Skills Lab 侧的项目通常使用 `web`；在设备上 `web` 在管理语义上与 `readonly` 等价。由运行时注册的 Skill 使用 `runtime`。
+Skill 的管理模式由存储根目录决定。可写 DATA 存储中的 Skill 可由运行时管理，固件内置的 SYSTEM Skill 为只读。
 
 `metadata.cap_groups` 是可选字段，指定一个 Capability Group ID 列表。当该 Skill 被激活时，列表中的 Group 会自动对 LLM 可见（开放相应工具）。这一机制将「工具用法文档」与「工具本身」绑定在同一个 Skill 的生命周期内，避免大模型在不了解用法时就能访问工具。
 

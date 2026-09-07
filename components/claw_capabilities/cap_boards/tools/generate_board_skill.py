@@ -164,8 +164,7 @@ def render_markdown(metadata: dict[str, Any], devices: list[dict[str, Any]]) -> 
         '  "description": "Use this skill before operating hardware or writing Lua and board-specific code that depends on device inventory '
         'and occupied GPIOs.",',
         '  "metadata": {',
-        '    "cap_groups": ["cap_boards"],',
-        '    "manage_mode": "readonly"',
+        '    "cap_groups": ["cap_boards"]',
         '  }',
         '}',
         '---',

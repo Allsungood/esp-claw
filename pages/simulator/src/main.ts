@@ -447,7 +447,7 @@ function renderSkill(skill: LoadedSkill): void {
   }
   document.querySelector<HTMLElement>('#sourceName')!.textContent = skill.params.repo
 
-  const categories = skill.frontmatter.metadata.category ?? []
+  const categories = skill.frontmatter.metadata?.category ?? []
   const tagList = document.querySelector<HTMLDivElement>('#categoryTags')!
   tagList.innerHTML = categories.map((cat) => `<span class="tag">${escapeHtml(cat)}</span>`).join('')
 }

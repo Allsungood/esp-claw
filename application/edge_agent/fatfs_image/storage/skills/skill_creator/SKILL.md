@@ -4,9 +4,9 @@
   "description": "Create or update model-invoked functions/features/skills, workflows, and Lua-backed capabilities.",
   "metadata": {
     "cap_groups": [
-      "cap_skill"
-    ],
-    "manage_mode": "readonly"
+      "cap_files",
+      "cap_skill_manage"
+    ]
   }
 }
 ---
@@ -23,7 +23,7 @@ Every skill creation flow those mandatory phases:
 
 1. Create the complete source skill files.
 2. (Options for Lua-backed skills) Create the complete bundled Lua files under the skill-owned `scripts/` directory and document how the skill invokes Lua.
-3. Immediately call `register_skill` so the newly created skill is added to the active skill registry.
+3. Immediately call `publish_skill` so the newly created skill is added to the active skill registry.
 
 Skills with source files live under a `skills/<skill_id>/` directory that is included in the firmware or file image build. They may require rebuilding or regenerating the image that contains skills.
 
@@ -47,14 +47,14 @@ File generation rules:
 - Create skill files by directly writing the needed files. Do not run a bundled preparation script or template generator.
 - Generate `SKILL.md` from the final behavior, not from a generic unchanged template.
 - Generate optional bundled files directly, such as `scripts/<name>.lua`, `references/<name>.md`, or assets.
-- If the environment cannot write files or cannot call `register_skill`, provide the target relative paths and full file contents, report the blocker, and do not claim the skill was fully created and registered.
+- If the environment cannot write files or cannot call `publish_skill`, provide the target relative paths and full file contents, report the blocker, and do not claim the skill was fully created and published.
 
-Registration rules:
+Publication rules:
 
-- Call `register_skill` for every newly created skill as the final creation step.
-- Register with `file` set exactly to `<skill_id>/SKILL.md`.
-- Use the tool result as the source of truth for registered skill metadata.
-- If registration fails, report the returned error directly and do not claim the skill was registered.
+- Call `publish_skill` for every newly created or updated skill as the final step.
+- Pass only `skill_id`; the firmware owns the `skills/<skill_id>/SKILL.md` path.
+- Use the tool result as the source of truth for publication success.
+- If publication fails, report the returned error directly and do not claim the skill was published.
 
 ## Skill File Layout
 
@@ -92,8 +92,8 @@ Flow:
 3. Check the target `skills/<skill_id>/` directory does not already exist unless the user explicitly asked to update or replace that skill.
 4. Write the complete `SKILL.md` and any optional bundled files into a valid source `skills/<skill_id>/` directory.
 5. Make semantic sections specific to the skill: trigger wording, prerequisites, `Recommended Flow`, args schema, and script behavior when Lua is used.
-6. Register the skill using the flow below.
-7. Tell the user the registered skill id.
+6. Publish the skill using the flow below.
+7. Tell the user the published skill id.
 8. Tell the user if a rebuild, file image regeneration, registry reload, or device restart may still be required before a newly created source skill is fully available.
 
 Use this `SKILL.md` pattern for a Lua-backed skill:
@@ -106,8 +106,7 @@ Use this `SKILL.md` pattern for a Lua-backed skill:
   "metadata": {
     "cap_groups": [
       "cap_lua"
-    ],
-    "manage_mode": "readonly"
+    ]
   }
 }
 ---
@@ -154,56 +153,54 @@ For reusable user-facing behavior, create or edit Lua only under the skill-owned
 
 Do not create bare Lua files for ambiguous "add a feature" requests.
 
-## Register Every Created Skill
+## Publish Every Created Skill
 
-Before registering a skill, choose:
+Before publishing a skill, choose:
 
 - `skill_id`: stable, short, and based on the user-facing behavior.
-- `file`: exactly `<skill_id>/SKILL.md`.
 - `description`: the `SKILL.md` frontmatter description, one sentence describing when the skill should be used, including common user wording and critical prerequisites.
 
 Flow:
 
 1. Choose or edit the final `skill_id` and frontmatter `description`.
 2. Ensure the complete source-file `SKILL.md` already exists at `skills/<skill_id>/SKILL.md`.
-3. Call `register_skill` directly with `skill_id` and `file`.
-4. If registration succeeds, tell the user the skill id that was registered.
-5. If registration fails, report the returned error directly and do not claim the skill was registered.
+3. Call `publish_skill` directly with `skill_id`.
+4. If publication succeeds, tell the user the skill id that was published.
+5. If publication fails, report the returned error directly and do not claim the skill was published.
 
-The `register_skill` input has this shape:
+The `publish_skill` input has this shape:
 
 ```json
-{"skill_id":"weather_alerts","file":"weather_alerts/SKILL.md"}
+{"skill_id":"weather_alerts"}
 ```
 
-Use the tool result as the source of truth for the registered skill metadata.
+Use the tool result as the source of truth for publication success.
 
 ## Update A Skill
 
-When updating a skill, update its source files, then refresh registration:
+When updating a skill, update its source files, then publish the updated definition:
 
 1. Confirm the target `skill_id` and whether the user asked to update or replace that skill.
 2. Update the existing skill files.
-3. Call `unregister_skill` for the old `skill_id` when the registry requires replacement.
-4. Call `register_skill` with the same `skill_id` and `file`.
+3. Call `publish_skill` with the same `skill_id`. Do not remove the skill before publishing an update.
 
-If unregistering or registering fails, stop and report the error.
+If publication fails, stop and report the error.
 
 ## Good Examples
 
-Create and register a reminder skill:
+Create and publish a reminder skill:
 
 ```json
-{"skill_id":"simple_reminders","file":"simple_reminders/SKILL.md"}
+{"skill_id":"simple_reminders"}
 ```
 
-Create and register a board notes skill:
+Create and publish a board notes skill:
 
 ```json
-{"skill_id":"board_notes","file":"board_notes/SKILL.md"}
+{"skill_id":"board_notes"}
 ```
 
-Create and register a Lua skill when the user asks for scripts, assets, or detailed flow:
+Create and publish a Lua skill when the user asks for scripts, assets, or detailed flow:
 
 ```text
 components/example/skills/take_measurement/

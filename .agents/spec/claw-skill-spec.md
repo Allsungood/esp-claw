@@ -11,6 +11,7 @@ component_xx/
 └── skills/
     └── skill_id/
         ├── SKILL.md
+        ├── launcher.json
         ├── references/
         │   └── guide.md
         ├── scripts/
@@ -23,7 +24,7 @@ Notes:
 
 - `skills/<skill_id>/` is one complete skill.
 - `SKILL.md` is the only required file.
-- `references/`, `scripts/`, `assets/`, and other subdirectories are optional.
+- `launcher.json`, `references/`, `scripts/`, `assets/`, and other files or subdirectories are optional.
 - The whole skill directory is packaged as one skill and copied unchanged into `skills/<skill_id>/` in the application SYSTEM file image.
 
 ## SKILL.md Rules
@@ -40,15 +41,7 @@ Notes:
     "category": ["game", "ui"],
     "tags": ["flappybird", "arcade", "demo", "button", "touch"],
     "peripherals": ["display"],
-    "cap_groups": ["cap_lua"],
-    "manage_mode": "web"
-  },
-  "execution": {
-    "entry": "scripts/flappybird.lua",
-    "icon": "assets/icon.jpg",
-    "args": {},
-    "order": 10,
-    "visible": true
+    "cap_groups": ["cap_lua"]
   }
 }
 ---
@@ -66,22 +59,14 @@ Rules:
 - `description` should briefly describe when to use the skill.
 - `author` is optional, but if present it must be a non-empty string.
 - If `author` contains angle brackets, it must use the form `Name <email>` with exactly one valid email address.
-- `metadata` must be an object.
+- `metadata` is optional. When present, it must be an object.
 - `metadata.cap_groups` is optional. When present, it must be a JSON array of non-empty unique strings and declares the capability groups that need to be activated.
-- `metadata.manage_mode` must be `readonly`, `web`, or `runtime`. Use `web` for ESP-Claw Skills Lab packaged skills. On device, `web` is treated the same as `readonly` for management (for example unregister rules). `runtime` is reserved for skills registered by the runtime.
-- `metadata.category` must contain at least one value, and every value must be in the category allowlist.
+- `metadata.category` is optional. When present, it must contain at least one value, and every value must be in the category allowlist.
 - `metadata.peripherals` may contain zero or more values, and every value must be in the peripheral allowlist.
 - `metadata.tags` is optional.
 - `metadata.tags`, when present, must be a string array.
 - `metadata.tags` is free-form and is not validated against an allowlist.
 - `metadata.tags` must not repeat any value already present in `metadata.category` or `metadata.peripherals`.
-- `execution` is optional. When present, it declares a System UI launcher entry for the skill.
-- `execution.entry` is required when `execution` is present. It must be a skill-owned relative `.lua` path such as `scripts/action.lua`.
-- `execution.icon` is optional. It must be a skill-owned relative `.jpg` or `.jpeg` launcher icon path when present. System UI decodes it to its fixed launcher icon size at runtime.
-- `execution.args` is optional. It must be a JSON object and is passed to the launcher script as compact JSON.
-- `execution.order` is optional. Lower values appear earlier in the launcher.
-- `execution.visible` is optional and defaults to `true`; set it to `false` to keep the execution metadata without showing it in the launcher.
-- `execution` does not support a `title` field. The launcher uses the skill id as the item title.
 - Additional keys at the root of the frontmatter or inside `metadata` may appear (for example tooling or Skills Lab fields). The device runtime ignores keys it does not read.
 
 ### Description
@@ -100,6 +85,39 @@ Example:
 ```json
 "description": "Turn the board LED strip/light on or off, set color or brightness. Requires board_hardware_info skill."
 ```
+
+## Launcher Definition
+
+`launcher.json` is an optional ESP-Claw attachment that exposes a skill-owned Lua script as a directly launchable System UI app. It is separate from `SKILL.md` and does not affect how the agent discovers or activates the skill.
+
+When present, `launcher.json` must contain a JSON object with this structure:
+
+```json
+{
+  "schema_version": 1,
+  "entry": "scripts/light_switch.lua",
+  "icon": "assets/icon.jpg",
+  "display_name": "my app",
+  "args": {},
+  "order": 10,
+  "visible": true
+}
+```
+
+Rules:
+
+- `schema_version` is required and must be `1`.
+- `entry` is required. It must be a skill-owned relative `.lua` path such as `scripts/light_switch.lua`.
+- `icon` is optional. It must be a skill-owned relative `.jpg` or `.jpeg` path. System UI decodes it to its fixed launcher icon size at runtime.
+- `display_name` is optional. It must be a non-empty string. It defaults to the skill id.
+- `args` is optional. It must be a JSON object and is passed to the launcher script as compact JSON.
+- `order` is optional and must be an integer. Lower values appear earlier in the launcher.
+- `visible` is optional and must be a boolean. It defaults to `true`; set it to `false` to keep the launcher definition without showing the app.
+- Unknown properties are ignored so newer launcher definitions remain compatible with older runtimes.
+- Launcher paths must not be absolute, contain `..`, or escape the skill directory.
+- The launcher uses `display_name` as the app title, falling back to the skill id.
+- A missing or invalid `launcher.json`, or a missing `entry` file, disables only the launcher entry and does not prevent the skill from being published.
+- A missing `icon` file falls back to the default launcher icon without disabling the launcher entry.
 
 ## Build Sync Rules
 
@@ -182,8 +200,9 @@ Rules:
 
 ## Naming And Conflict Rules
 
-- Skill ids must be stable. Prefer lowercase letters, digits, underscores, or hyphens.
+- Skill ids must be 1–63 characters and contain only ASCII letters, digits, underscores, or hyphens. Prefer lowercase.
 - Skill ids must exactly match their directory names.
 - The project must not contain duplicate skill ids.
 - The project must not contain duplicate skill output file paths.
 - Do not expose the same user-facing action through multiple skills or script indexes.
+- At runtime, malformed or unreadable individual skills are logged and skipped without preventing other valid skills from loading.
