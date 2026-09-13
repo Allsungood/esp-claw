@@ -5,15 +5,19 @@ devices:
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
   # documented 320x172 landscape geometry.
   #
-  # Orientation is not guessable on this panel: it needs an even number of mirror
-  # bits or the output is mirrored, which no physical rotation can undo. Both
-  # mirrors must be set, giving MADCTL = MX|MY|MV. This is TFT_eSPI's verified
-  # landscape ("rotation 1") programming for _init_width == 172, see
-  #   https://can1425.flowecho.org/2025/08/31/20250831/
-  # which documents MX for portrait, MY|MX|MV for landscape, MY for inverted
-  # portrait and MV for inverted landscape, all with a 34-pixel axis offset.
+  # Orientation was determined empirically on real hardware, because the mapping
+  # of the MADCTL bits is not intuitive once swap_xy is in play: with MV set, the
+  # MX bit flips the image VERTICALLY and MY flips it HORIZONTALLY, the opposite
+  # of what the parameter names suggest. Presenting the panel as 320x172 landscape
+  # needs:
+  #   swap_xy  -> MV, transposes the 172x320 glass into landscape
+  #   mirror_x -> MX, leaves the vertical axis alone
+  #   mirror_y -> MY, must stay 0 or the output comes out left-right mirrored,
+  #               which no rotation of the device can undo
+  # MX|MY|MV and MX|MV both render mirrored or upside down respectively; only
+  # MX|MV (this setting) is upright.
   #
-  # That 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
+  # The 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
   # memory. The board manager has no gap field, so setup_device.c applies it.
   - name: display_lcd
     chip: st7789
@@ -22,7 +26,7 @@ devices:
     version: default
     config:
       mirror_x: true
-      mirror_y: true
+      mirror_y: false
       swap_xy: true
       invert_color: true
       x_max: 320
