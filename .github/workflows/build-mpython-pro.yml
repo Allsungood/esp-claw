@@ -1,0 +1,83 @@
+name: Build ESP-Claw for mpython_pro
+
+# Builds the esp-claw firmware for the Labplus mPython Pro (掌控板 3.0) on a Linux
+# runner and publishes a single merged image that can be flashed from any OS.
+#
+# This exists because Windows cannot build this board locally: enabling the LCD
+# pulls in lvgl, freetype, esp-dsp and eight LCD panel drivers, which pushes the
+# gcc command line past the 32767-character CreateProcess limit ("ninja: fatal:
+# CreateProcess: The parameter is incorrect"). Linux has no such limit.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - 'application/edge_agent/boards/labplus/**'
+      - '.github/workflows/build-mpython-pro.yml'
+
+env:
+  IDF_VERSION: v5.5.2
+  BOARD: mpython_pro
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # The Xtensa toolchain download is the slow part of the install, so cache it.
+      - name: Cache ESP-IDF tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.espressif
+          key: espressif-tools-${{ env.IDF_VERSION }}-esp32s3
+
+      - name: Install ESP-IDF ${{ env.IDF_VERSION }}
+        run: |
+          set -euo pipefail
+          git clone -b "${IDF_VERSION}" --depth 1 --recursive \
+            https://github.com/espressif/esp-idf.git "${HOME}/esp-idf"
+          "${HOME}/esp-idf/install.sh" esp32s3
+
+      - name: Select board and build
+        run: |
+          set -euo pipefail
+          . "${HOME}/esp-idf/export.sh"
+          pip install esp-bmgr-assist
+          cd application/edge_agent
+          idf.py bmgr -c ./boards -b "${BOARD}"
+          idf.py build
+
+      - name: Merge partitions into a single image
+        run: |
+          set -euo pipefail
+          . "${HOME}/esp-idf/export.sh"
+          cd application/edge_agent/build
+          python -m esptool --chip esp32s3 merge_bin \
+            -o "${GITHUB_WORKSPACE}/esp-claw-${BOARD}.bin" @flash_args
+          ls -la "${GITHUB_WORKSPACE}/esp-claw-${BOARD}.bin"
+
+      - name: Show flash layout
+        run: |
+          set -euo pipefail
+          echo "=== flash_args (offsets used by the merged image) ==="
+          cat application/edge_agent/build/flash_args
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-claw-${{ env.BOARD }}-firmware
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            esp-claw-${{ env.BOARD }}.bin
+            application/edge_agent/build/flash_args
+            application/edge_agent/build/edge_agent.bin
+            application/edge_agent/build/edge_agent.elf
+            application/edge_agent/build/bootloader/bootloader.bin
+            application/edge_agent/build/partition_table/partition-table.bin
+            application/edge_agent/build/ota_data_initial.bin
+            application/edge_agent/build/system.bin
+            application/edge_agent/build/storage.bin
