@@ -7,6 +7,11 @@ name: Build ESP-Claw for mpython_pro
 # pulls in lvgl, freetype, esp-dsp and eight LCD panel drivers, which pushes the
 # gcc command line past the 32767-character CreateProcess limit ("ninja: fatal:
 # CreateProcess: The parameter is incorrect"). Linux has no such limit.
+#
+# NOTE: do not export an env var named IDF_VERSION from this workflow. The ESP
+# component manager reads IDF_VERSION when writing dependencies.lock, and a value
+# such as "v5.5.2" (leading "v") makes it fail with
+# "ValueError: Version string lacks a numerical component".
 
 on:
   workflow_dispatch:
@@ -17,8 +22,8 @@ on:
       - '.github/workflows/build-mpython-pro.yml'
 
 env:
-  IDF_VERSION: v5.5.2
-  BOARD: mpython_pro
+  CLAW_BOARD: mpython_pro
+  IDF_REF: v5.5.2
 
 jobs:
   build:
@@ -32,12 +37,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.espressif
-          key: espressif-tools-${{ env.IDF_VERSION }}-esp32s3
+          key: espressif-tools-${{ env.IDF_REF }}-esp32s3
 
-      - name: Install ESP-IDF ${{ env.IDF_VERSION }}
+      - name: Install ESP-IDF
         run: |
           set -euo pipefail
-          git clone -b "${IDF_VERSION}" --depth 1 --recursive \
+          git clone -b "${IDF_REF}" --depth 1 --recursive \
             https://github.com/espressif/esp-idf.git "${HOME}/esp-idf"
           "${HOME}/esp-idf/install.sh" esp32s3
 
@@ -47,7 +52,7 @@ jobs:
           . "${HOME}/esp-idf/export.sh"
           pip install esp-bmgr-assist
           cd application/edge_agent
-          idf.py bmgr -c ./boards -b "${BOARD}"
+          idf.py bmgr -c ./boards -b "${CLAW_BOARD}"
           idf.py build
 
       - name: Merge partitions into a single image
@@ -56,8 +61,8 @@ jobs:
           . "${HOME}/esp-idf/export.sh"
           cd application/edge_agent/build
           python -m esptool --chip esp32s3 merge_bin \
-            -o "${GITHUB_WORKSPACE}/esp-claw-${BOARD}.bin" @flash_args
-          ls -la "${GITHUB_WORKSPACE}/esp-claw-${BOARD}.bin"
+            -o "${GITHUB_WORKSPACE}/esp-claw-${CLAW_BOARD}.bin" @flash_args
+          ls -la "${GITHUB_WORKSPACE}/esp-claw-${CLAW_BOARD}.bin"
 
       - name: Show flash layout
         run: |
@@ -68,11 +73,11 @@ jobs:
       - name: Upload firmware artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: esp-claw-${{ env.BOARD }}-firmware
+          name: esp-claw-${{ env.CLAW_BOARD }}-firmware
           if-no-files-found: error
           retention-days: 30
           path: |
-            esp-claw-${{ env.BOARD }}.bin
+            esp-claw-${{ env.CLAW_BOARD }}.bin
             application/edge_agent/build/flash_args
             application/edge_agent/build/edge_agent.bin
             application/edge_agent/build/edge_agent.elf
