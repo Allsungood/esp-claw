@@ -5,17 +5,23 @@ devices:
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
   # documented 320x172 landscape geometry.
   #
-  # mirror_x/mirror_y both had to be flipped from their first-guess values to undo
-  # a 180-degree rotation seen on real hardware. The panel's 34-pixel centering
-  # offset inside the ST7789 240x320 frame memory is not expressible here (the
-  # board manager has no gap field), so setup_device.c applies it.
+  # Orientation is not guessable on this panel: it needs an even number of mirror
+  # bits or the output is mirrored, which no physical rotation can undo. Both
+  # mirrors must be set, giving MADCTL = MX|MY|MV. This is TFT_eSPI's verified
+  # landscape ("rotation 1") programming for _init_width == 172, see
+  #   https://can1425.flowecho.org/2025/08/31/20250831/
+  # which documents MX for portrait, MY|MX|MV for landscape, MY for inverted
+  # portrait and MV for inverted landscape, all with a 34-pixel axis offset.
+  #
+  # That 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
+  # memory. The board manager has no gap field, so setup_device.c applies it.
   - name: display_lcd
     chip: st7789
     type: display_lcd
     sub_type: spi
     version: default
     config:
-      mirror_x: false
+      mirror_x: true
       mirror_y: true
       swap_xy: true
       invert_color: true
