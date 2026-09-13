@@ -29,17 +29,16 @@
  *      - button B cycles through the candidate table below. The applied value is
  *        logged, so "press until it looks right" is enough to identify it.
  *      - /fatfs/lcd.cfg ("madctl_hex x_gap y_gap", e.g. "e0 0 34") overrides the
- *        boot default. The file cannot be read from the factory hook because the
- *        factory runs before the data partition is mounted, so it is picked up from
- *        the draw wrapper once the filesystem is up.
+ *        boot default.
  *
  *    The candidates cover the four landscape orientations with MV set, in both RGB
  *    and BGR colour order, since a wrong BGR bit swaps red and blue.
  *
- * 3. Draw hook
- *    MADCTL is rewritten from a wrapper around the panel's draw_bitmap. The wrapper
- *    is also where the button is polled, which keeps everything in the display task
- *    and avoids a separate polling task.
+ * 3. Why a task rather than a draw hook
+ *    Both the button and the config file are handled by a small polling task. A
+ *    draw hook is not usable for this: the agent UI is static between messages, so
+ *    draw_bitmap can go minutes without being called and button presses would be
+ *    missed entirely.
  */
 
 #include <stdio.h>
@@ -51,11 +50,10 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_st7789.h"
-/* esp_lcd_panel_t is only fully defined here; the ops/vendor headers expose the
- * handle but not the function-pointer table that the draw wrapper needs. */
-#include "esp_lcd_panel_interface.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
 
@@ -71,14 +69,14 @@ static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
 /*!< Runtime override file, on the writable data root. */
 #define MPYTHON_PRO_LCD_CFG_PATH "/fatfs/lcd.cfg"
 
-/*!< Re-check the override file every N draws until it has been read once. */
-#define MPYTHON_PRO_LCD_CFG_RETRY_DRAWS (120)
-
 /*!< Onboard button B, already configured as a pulled-up input by the board manager. */
 #define MPYTHON_PRO_BUTTON_B_GPIO  (46)
 
-/*!< Minimum gap between two accepted button presses, in microseconds. */
-#define MPYTHON_PRO_BUTTON_DEBOUNCE_US  (300000)
+#define MPYTHON_PRO_LCD_TASK_POLL_MS      50
+#define MPYTHON_PRO_BUTTON_DEBOUNCE_US    300000
+#define MPYTHON_PRO_LCD_CFG_RETRY_MS      1000
+#define MPYTHON_PRO_LCD_TASK_STACK        3072
+#define MPYTHON_PRO_LCD_TASK_PRIORITY     4
 
 /*
  * Landscape orientations with MV set (bit 5), plus the BGR bit (bit 3) variants:
@@ -89,18 +87,19 @@ static const uint8_t s_lcd_candidates[] = {
     0x28, 0x68, 0xA8, 0xE8,
 };
 
+#define MPYTHON_PRO_LCD_CANDIDATE_COUNT \
+    (sizeof(s_lcd_candidates) / sizeof(s_lcd_candidates[0]))
+
 typedef struct {
     esp_lcd_panel_io_handle_t io;
     esp_lcd_panel_t *panel;
-    esp_err_t (*draw_bitmap)(esp_lcd_panel_t *, int, int, int, int, const void *);
-    int draws;
-    bool cfg_loaded;
     uint8_t madctl;
     int x_gap;
     int y_gap;
     int candidate;
     int button_level;
     int64_t last_press_us;
+    bool cfg_loaded;
 } mpython_pro_lcd_t;
 
 static mpython_pro_lcd_t s_lcd;
@@ -117,12 +116,15 @@ static void mpython_pro_lcd_apply(uint8_t madctl, int x_gap, int y_gap)
         ESP_LOGE(TAG, "Failed to set gap: %s", esp_err_to_name(ret));
         return;
     }
+    s_lcd.madctl = madctl;
+    s_lcd.x_gap = x_gap;
+    s_lcd.y_gap = y_gap;
     ESP_LOGW(TAG, "LCD orientation applied: MADCTL=0x%02X x_gap=%d y_gap=%d",
              madctl, x_gap, y_gap);
 }
 
 /*!< Returns true when the optional override file supplied the values. */
-static bool mpython_pro_lcd_load_cfg(uint8_t *madctl, int *x_gap, int *y_gap)
+static bool mpython_pro_lcd_load_cfg(void)
 {
     FILE *file = fopen(MPYTHON_PRO_LCD_CFG_PATH, "r");
     if (file == NULL) {
@@ -149,60 +151,41 @@ static bool mpython_pro_lcd_load_cfg(uint8_t *madctl, int *x_gap, int *y_gap)
         return false;
     }
 
-    *madctl = (uint8_t)m;
-    *x_gap = x;
-    *y_gap = y;
+    ESP_LOGW(TAG, "%s found: MADCTL=0x%02X x_gap=%d y_gap=%d",
+             MPYTHON_PRO_LCD_CFG_PATH, m, x, y);
+    mpython_pro_lcd_apply((uint8_t)m, x, y);
     return true;
 }
 
-/*!< Advance to the next candidate when button B is pressed, and log which one. */
-static void mpython_pro_lcd_poll_button(void)
+static void mpython_pro_lcd_task(void *arg)
 {
-    const int level = gpio_get_level((gpio_num_t)MPYTHON_PRO_BUTTON_B_GPIO);
-    if (level == s_lcd.button_level) {
-        return;
-    }
-    s_lcd.button_level = level;
+    (void)arg;
+    int64_t next_cfg_try_ms = 0;
 
-    /* Button B is active low: a press pulls the line down. */
-    if (level != 0) {
-        return;
-    }
-
-    const int64_t now = esp_timer_get_time();
-    if (now - s_lcd.last_press_us < MPYTHON_PRO_BUTTON_DEBOUNCE_US) {
-        return;
-    }
-    s_lcd.last_press_us = now;
-
-    s_lcd.candidate = (s_lcd.candidate + 1) % (int)(sizeof(s_lcd_candidates) / sizeof(s_lcd_candidates[0]));
-    s_lcd.madctl = s_lcd_candidates[s_lcd.candidate];
-    mpython_pro_lcd_apply(s_lcd.madctl, s_lcd.x_gap, s_lcd.y_gap);
-    ESP_LOGW(TAG, "Button B: candidate %d/%d selected",
-             s_lcd.candidate + 1, (int)(sizeof(s_lcd_candidates) / sizeof(s_lcd_candidates[0])));
-}
-
-static esp_err_t mpython_pro_lcd_draw_bitmap(esp_lcd_panel_t *panel, int x_start, int y_start,
-                                             int x_end, int y_end, const void *color_data)
-{
-    if (!s_lcd.cfg_loaded && (s_lcd.draws++ % MPYTHON_PRO_LCD_CFG_RETRY_DRAWS) == 0) {
-        uint8_t madctl = MPYTHON_PRO_LCD_MADCTL;
-        int x_gap = 0;
-        int y_gap = MPYTHON_PRO_LCD_GAP_PX;
-        if (mpython_pro_lcd_load_cfg(&madctl, &x_gap, &y_gap)) {
-            if (madctl != s_lcd.madctl || x_gap != s_lcd.x_gap || y_gap != s_lcd.y_gap) {
-                s_lcd.madctl = madctl;
-                s_lcd.x_gap = x_gap;
-                s_lcd.y_gap = y_gap;
-                mpython_pro_lcd_apply(madctl, x_gap, y_gap);
-            }
-            s_lcd.cfg_loaded = true;
+    for (;;) {
+        if (!s_lcd.cfg_loaded && esp_timer_get_time() / 1000 >= next_cfg_try_ms) {
+            next_cfg_try_ms = esp_timer_get_time() / 1000 + MPYTHON_PRO_LCD_CFG_RETRY_MS;
+            s_lcd.cfg_loaded = mpython_pro_lcd_load_cfg();
         }
+
+        const int level = gpio_get_level((gpio_num_t)MPYTHON_PRO_BUTTON_B_GPIO);
+        if (level != s_lcd.button_level) {
+            s_lcd.button_level = level;
+            /* Button B is active low: a press pulls the line down. */
+            if (level == 0) {
+                const int64_t now = esp_timer_get_time();
+                if (now - s_lcd.last_press_us >= MPYTHON_PRO_BUTTON_DEBOUNCE_US) {
+                    s_lcd.last_press_us = now;
+                    s_lcd.candidate = (s_lcd.candidate + 1) % (int)MPYTHON_PRO_LCD_CANDIDATE_COUNT;
+                    ESP_LOGW(TAG, "Button B: candidate %d/%d",
+                             s_lcd.candidate + 1, (int)MPYTHON_PRO_LCD_CANDIDATE_COUNT);
+                    mpython_pro_lcd_apply(s_lcd_candidates[s_lcd.candidate], s_lcd.x_gap, s_lcd.y_gap);
+                }
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(MPYTHON_PRO_LCD_TASK_POLL_MS));
     }
-
-    mpython_pro_lcd_poll_button();
-
-    return s_lcd.draw_bitmap(panel, x_start, y_start, x_end, y_end, color_data);
 }
 
 esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
@@ -226,23 +209,24 @@ esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
 
     s_lcd.io = io;
     s_lcd.panel = *ret_panel;
-    s_lcd.draw_bitmap = (*ret_panel)->draw_bitmap;
     s_lcd.madctl = MPYTHON_PRO_LCD_MADCTL;
     s_lcd.x_gap = 0;
     s_lcd.y_gap = MPYTHON_PRO_LCD_GAP_PX;
     s_lcd.candidate = 0;
     s_lcd.button_level = gpio_get_level((gpio_num_t)MPYTHON_PRO_BUTTON_B_GPIO);
     s_lcd.last_press_us = 0;
+    s_lcd.cfg_loaded = false;
 
-    /* Intercept drawing so the data partition has a chance to mount first, and so
-     * button B can cycle the orientation from the display task. */
-    (*ret_panel)->draw_bitmap = mpython_pro_lcd_draw_bitmap;
-    if (s_lcd.draw_bitmap != NULL) {
-        mpython_pro_lcd_apply(s_lcd.madctl, s_lcd.x_gap, s_lcd.y_gap);
-    }
+    mpython_pro_lcd_apply(s_lcd.madctl, s_lcd.x_gap, s_lcd.y_gap);
 
-    ESP_LOGI(TAG, "ST7789 ready, default MADCTL=0x%02X y_gap=%d; press button B to cycle, "
-             "or write '%s' with 'madctl x_gap y_gap'",
-             MPYTHON_PRO_LCD_MADCTL, MPYTHON_PRO_LCD_GAP_PX, MPYTHON_PRO_LCD_CFG_PATH);
+    const BaseType_t created = xTaskCreate(mpython_pro_lcd_task, "lcd_orient",
+                                           MPYTHON_PRO_LCD_TASK_STACK, NULL,
+                                           MPYTHON_PRO_LCD_TASK_PRIORITY, NULL);
+    ESP_RETURN_ON_FALSE(created == pdPASS, ESP_ERR_NO_MEM, TAG, "failed to create LCD task");
+
+    ESP_LOGI(TAG, "ST7789 ready, default MADCTL=0x%02X y_gap=%d; press button B to cycle "
+             "%d candidates, or provide '%s' with 'madctl x_gap y_gap'",
+             MPYTHON_PRO_LCD_MADCTL, MPYTHON_PRO_LCD_GAP_PX,
+             (int)MPYTHON_PRO_LCD_CANDIDATE_COUNT, MPYTHON_PRO_LCD_CFG_PATH);
     return ESP_OK;
 }
