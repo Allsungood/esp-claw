@@ -94,7 +94,9 @@ static const uint8_t s_lcd_candidates[] = {
 
 typedef struct {
     esp_lcd_panel_io_handle_t io;
-    esp_lcd_panel_t *panel;
+    /* Opaque handle: esp_lcd_panel_set_gap() takes this type, so the internal
+     * esp_lcd_panel_interface.h does not have to be pulled in. */
+    esp_lcd_panel_handle_t panel;
     uint8_t madctl;
     int x_gap;
     int y_gap;
