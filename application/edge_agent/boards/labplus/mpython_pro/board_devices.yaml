@@ -5,17 +5,21 @@ devices:
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
   # documented 320x172 landscape geometry.
   #
-  # Orientation was determined empirically on real hardware, because the mapping
-  # of the MADCTL bits is not intuitive once swap_xy is in play: with MV set, the
-  # MX bit flips the image VERTICALLY and MY flips it HORIZONTALLY, the opposite
-  # of what the parameter names suggest. Presenting the panel as 320x172 landscape
-  # needs:
+  # Orientation was determined empirically on real hardware; the MADCTL bit
+  # mapping is not intuitive once swap_xy is in play. The most reliable probe was
+  # asking whether a physical mirror makes the image readable, which detects a
+  # pure horizontal mirror unambiguously:
+  #   MX=1 MY=0 -> left-right mirrored (mirror fixes it), so MX drives the
+  #                horizontal axis and must be 0
+  #   MX=1 MY=1 -> upside down (the vertical flip on top of the mirror)
+  #   MX=0 MY=1 -> upside down as well
+  # Hence the upright landscape is MV|nothing:
   #   swap_xy  -> MV, transposes the 172x320 glass into landscape
-  #   mirror_x -> MX, leaves the vertical axis alone
-  #   mirror_y -> MY, must stay 0 or the output comes out left-right mirrored,
-  #               which no rotation of the device can undo
-  # MX|MY|MV and MX|MV both render mirrored or upside down respectively; only
-  # MX|MV (this setting) is upright.
+  #   mirror_x -> MX = 0
+  #   mirror_y -> MY = 0
+  # i.e. MADCTL == MV, which is also the vendor-verified "rotation 3" setting
+  # documented at https://can1425.flowecho.org/2025/08/31/20250831/ (that page
+  # lists MV alone for inverted landscape, with a 34-pixel axis offset).
   #
   # The 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
   # memory. The board manager has no gap field, so setup_device.c applies it.
@@ -25,7 +29,7 @@ devices:
     sub_type: spi
     version: default
     config:
-      mirror_x: true
+      mirror_x: false
       mirror_y: false
       swap_xy: true
       invert_color: true
