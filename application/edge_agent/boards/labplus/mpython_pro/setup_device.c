@@ -48,6 +48,9 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_st7789.h"
+/* esp_lcd_panel_t is only fully defined here; the ops/vendor headers expose the
+ * handle but not the function-pointer table that the draw wrapper needs. */
+#include "esp_lcd_panel_interface.h"
 #include "esp_log.h"
 
 static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
