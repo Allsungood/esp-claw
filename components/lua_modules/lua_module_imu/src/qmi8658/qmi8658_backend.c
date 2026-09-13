@@ -83,7 +83,16 @@ static esp_err_t qmi8658_backend_read_sample(lua_imu_backend_ctx_t *ctx, lua_imu
     uint8_t raw[12] = { 0 };
     esp_err_t err = qmi8658_read(ctx, QMI8658_REG_ACCEL_XYZ, raw, sizeof(raw));
     if (err != ESP_OK) {
+        ESP_LOGE(TAG, "burst read from 0x%02X failed: %s", QMI8658_REG_ACCEL_XYZ, esp_err_to_name(err));
         return err;
+    }
+
+    static bool logged_once;
+    if (!logged_once) {
+        logged_once = true;
+        ESP_LOGW(TAG, "first sample raw: %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X",
+                 raw[0], raw[1], raw[2], raw[3], raw[4], raw[5],
+                 raw[6], raw[7], raw[8], raw[9], raw[10], raw[11]);
     }
 
     out->accel.x = (int16_t)((uint16_t)raw[0] | ((uint16_t)raw[1] << 8));
