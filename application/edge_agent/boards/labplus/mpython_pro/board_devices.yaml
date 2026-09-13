@@ -5,21 +5,16 @@ devices:
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
   # documented 320x172 landscape geometry.
   #
-  # Orientation was determined empirically on real hardware; the MADCTL bit
-  # mapping is not intuitive once swap_xy is in play. The most reliable probe was
-  # asking whether a physical mirror makes the image readable, which detects a
-  # pure horizontal mirror unambiguously:
-  #   MX=1 MY=0 -> left-right mirrored (mirror fixes it), so MX drives the
-  #                horizontal axis and must be 0
-  #   MX=1 MY=1 -> upside down (the vertical flip on top of the mirror)
-  #   MX=0 MY=1 -> upside down as well
-  # Hence the upright landscape is MV|nothing:
-  #   swap_xy  -> MV, transposes the 172x320 glass into landscape
-  #   mirror_x -> MX = 0
-  #   mirror_y -> MY = 0
-  # i.e. MADCTL == MV, which is also the vendor-verified "rotation 3" setting
-  # documented at https://can1425.flowecho.org/2025/08/31/20250831/ (that page
-  # lists MV alone for inverted landscape, with a 34-pixel axis offset).
+  # Orientation was settled on real hardware, because the MADCTL mapping is not
+  # intuitive once swap_xy sets MV. Two independent probes agree on MADCTL == 0xE0
+  # (MX|MY|MV):
+  #   - a three-bar test pattern drawn through the Lua display module came out
+  #     rotated 180 degrees with MV alone, and rotating it back needs both mirror
+  #     bits, and
+  #   - stepping the raw MADCTL byte from the device (button B, see setup_device.c)
+  #     produced an upright, readable UI on the third step: 0x20 -> 0x60 -> 0xA0 ->
+  #     0xE0.
+  # So both mirrors must be set, which the board manager expresses as below.
   #
   # The 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
   # memory. The board manager has no gap field, so setup_device.c applies it.
@@ -29,8 +24,8 @@ devices:
     sub_type: spi
     version: default
     config:
-      mirror_x: false
-      mirror_y: false
+      mirror_x: true
+      mirror_y: true
       swap_xy: true
       invert_color: true
       x_max: 320

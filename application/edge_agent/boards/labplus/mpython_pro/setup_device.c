@@ -60,8 +60,8 @@ static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
 /*!< Centring offset of the 172-pixel-wide glass in the ST7789 240-pixel frame memory. */
 #define MPYTHON_PRO_LCD_GAP_PX   ((240 - 172) / 2)
 
-/*!< MADCTL as configured by board_devices.yaml: swap_xy only, so MV. */
-#define MPYTHON_PRO_LCD_MADCTL   (0x20)
+/*!< MADCTL that renders this panel upright: MX|MY|MV, matching board_devices.yaml. */
+#define MPYTHON_PRO_LCD_MADCTL   (0xE0)
 
 /*!< ST7789 command used directly: esp_lcd keeps MADCTL private. */
 #define ST7789_CMD_MADCTL        (0x36)
@@ -81,9 +81,11 @@ static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
 /*
  * Landscape orientations with MV set (bit 5), plus the BGR bit (bit 3) variants:
  *   MY = 0x80, MX = 0x40, MV = 0x20, BGR = 0x08
+ * The correct value for this panel is index 3 (0xE0); button B starts there and
+ * cycles from it.
  */
 static const uint8_t s_lcd_candidates[] = {
-    0x20, 0x60, 0xA0, 0xE0,
+    0xE0, 0x20, 0x60, 0xA0,
     0x28, 0x68, 0xA8, 0xE8,
 };
 
