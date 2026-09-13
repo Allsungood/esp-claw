@@ -64,7 +64,6 @@ devices:
       dac_enabled: false
       adc_max_channel: 2
       adc_channel_mask: "11"
-      adc_channel_labels: ['MIC_L', 'MIC_R']
       adc_init_gain: 0
       mclk_enabled: true
     peripherals:
