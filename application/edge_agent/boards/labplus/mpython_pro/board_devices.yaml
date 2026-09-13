@@ -4,14 +4,19 @@ devices:
   # Onboard 1.47" 320x172 ST7789 over SPI (CS=34, DC/RS=35, no reset line).
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
   # documented 320x172 landscape geometry.
+  #
+  # mirror_x/mirror_y both had to be flipped from their first-guess values to undo
+  # a 180-degree rotation seen on real hardware. The panel's 34-pixel centering
+  # offset inside the ST7789 240x320 frame memory is not expressible here (the
+  # board manager has no gap field), so setup_device.c applies it.
   - name: display_lcd
     chip: st7789
     type: display_lcd
     sub_type: spi
     version: default
     config:
-      mirror_x: true
-      mirror_y: false
+      mirror_x: false
+      mirror_y: true
       swap_xy: true
       invert_color: true
       x_max: 320

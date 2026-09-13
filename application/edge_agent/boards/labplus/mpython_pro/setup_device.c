@@ -8,6 +8,19 @@
  * The onboard ST7789 panel has no dedicated reset line and uses the stock esp_lcd
  * ST7789 driver, so the SPI display path only needs the panel factory hook that
  * dev_display_lcd_sub_spi.c resolves at link time.
+ *
+ * This hook also applies the panel's window offset. The 172-pixel-wide glass is
+ * centred inside the ST7789's 240x320 frame memory, leaving a 34-pixel margin on
+ * each side. Without compensating for it the driver writes into the margin and
+ * the far edge of the glass is never addressed, which shows up as a band of
+ * uninitialised pixels. The board manager's display_lcd config has no gap field,
+ * so it has to be set here.
+ *
+ * With swap_xy enabled the driver works in 320x172 landscape coordinates, where
+ * logical X runs along the glass' long axis and logical Y along its short axis,
+ * so the offset belongs on the Y axis. esp_lcd only stores the gap in the panel
+ * struct, so applying it before the board manager calls reset/init/mirror/swap is
+ * safe and order-independent.
  */
 
 #include "esp_check.h"
@@ -17,6 +30,9 @@
 #include "esp_log.h"
 
 static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
+
+/*!< Centring offset of the 172-pixel-wide glass in the ST7789 240-pixel frame memory. */
+#define MPYTHON_PRO_LCD_GAP_PX  ((240 - 172) / 2)
 
 esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
                                     const esp_lcd_panel_dev_config_t *panel_dev_config,
@@ -28,6 +44,15 @@ esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
     esp_err_t ret = esp_lcd_new_panel_st7789(io, panel_dev_config, ret_panel);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create ST7789 panel: %s", esp_err_to_name(ret));
+        return ret;
     }
-    return ret;
+
+    ret = esp_lcd_panel_set_gap(*ret_panel, 0, MPYTHON_PRO_LCD_GAP_PX);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to set ST7789 gap: %s", esp_err_to_name(ret));
+        return ret;
+    }
+
+    ESP_LOGI(TAG, "ST7789 panel ready, y_gap=%d px", MPYTHON_PRO_LCD_GAP_PX);
+    return ESP_OK;
 }
