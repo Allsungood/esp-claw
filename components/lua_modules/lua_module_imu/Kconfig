@@ -20,6 +20,13 @@ menu "Lua IMU Module"
             bool "ICM42670"
             help
                 Build the IMU Lua module with the ICM42670 backend.
+
+        config LUA_MODULE_IMU_CHIP_QMI8658
+            bool "QMI8658"
+            help
+                Build the IMU Lua module with the QMI8658 backend, used by the
+                Labplus mPython Pro (掌控板 3.0). Self-contained: it needs no
+                vendor component.
     endchoice
 
 endmenu

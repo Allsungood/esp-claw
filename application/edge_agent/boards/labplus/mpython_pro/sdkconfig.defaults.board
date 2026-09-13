@@ -34,3 +34,9 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # Onboard ST7789 LCD.
 CONFIG_ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT=y
 CONFIG_APP_CLAW_LUA_MODULE_LCD=y
+
+# Onboard QMI8658C 6-axis IMU on the shared I2C bus. LUA_MODULE_IMU_CHIP is a
+# choice, so exactly one backend is compiled; the QMI8658 backend is
+# self-contained and needs no vendor component.
+CONFIG_APP_CLAW_LUA_MODULE_IMU=y
+CONFIG_LUA_MODULE_IMU_CHIP_QMI8658=y

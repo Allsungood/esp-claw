@@ -148,3 +148,23 @@ devices:
         press_end: false
     peripherals:
       - name: gpio_button_b
+
+  # Onboard QMI8658C 6-axis IMU on the shared I2C bus (address read back from
+  # hardware: WHO_AM_I 0x05 at 0x6B). init_skip leaves the chip alone here; the
+  # lua_module_imu QMI8658 backend probes and configures it on first use.
+  #
+  # Every config field below must stay present: lua_module_imu casts the generated
+  # struct to a fixed layout and rejects the config when the size differs, so
+  # dropping a field silently disables the module. Use -1 for unused GPIOs.
+  - name: imu_sensor
+    chip: qmi8658
+    type: custom
+    version: default
+    init_skip: true
+    config:
+      i2c_addr: 0x6B
+      frequency: 400000
+      int_gpio_num: -1
+      sdo_gpio_num: -1
+    peripherals:
+      - name: i2c_master
