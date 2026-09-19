@@ -1,5 +1,5 @@
 version: 1.0.0
-# Devices for the Labplus mPython Pro (掌控板 3.0).
+# Devices for the Labplus mPython 3.0 / 掌控板 3.0.
 devices:
   # Onboard 1.47" 320x172 ST7789 over SPI (CS=34, DC/RS=35, no reset line).
   # The glass is natively portrait 172x320, so swap_xy is used to expose the
@@ -8,12 +8,11 @@ devices:
   # Orientation was settled on real hardware, because the MADCTL mapping is not
   # intuitive once swap_xy sets MV. Two independent probes agree on MADCTL == 0xE0
   # (MX|MY|MV):
-  #   - a three-bar test pattern drawn through the Lua display module came out
+  #   - a three-bar test pattern driven through the Lua display module came out
   #     rotated 180 degrees with MV alone, and rotating it back needs both mirror
   #     bits, and
-  #   - stepping the raw MADCTL byte from the device (button B, see setup_device.c)
-  #     produced an upright, readable UI on the third step: 0x20 -> 0x60 -> 0xA0 ->
-  #     0xE0.
+  #   - cycling the raw MADCTL byte on the device produced an upright, readable UI
+  #     at 0xE0 (0x20 -> 0x60 -> 0xA0 -> 0xE0).
   # So both mirrors must be set, which the board manager expresses as below.
   #
   # The 34-pixel offset centres the 172-pixel glass in the ST7789 240x320 frame
@@ -149,22 +148,9 @@ devices:
     peripherals:
       - name: gpio_button_b
 
-  # Onboard QMI8658C 6-axis IMU on the shared I2C bus (address read back from
-  # hardware: WHO_AM_I 0x05 at 0x6B). init_skip leaves the chip alone here; the
-  # lua_module_imu QMI8658 backend probes and configures it on first use.
-  #
-  # Every config field below must stay present: lua_module_imu casts the generated
-  # struct to a fixed layout and rejects the config when the size differs, so
-  # dropping a field silently disables the module. Use -1 for unused GPIOs.
-  - name: imu_sensor
-    chip: qmi8658
-    type: custom
-    version: default
-    init_skip: true
-    config:
-      i2c_addr: 0x6B
-      frequency: 400000
-      int_gpio_num: -1
-      sdo_gpio_num: -1
-    peripherals:
-      - name: i2c_master
+  # The onboard I2C sensors (QMI8658C 6-axis at 0x6B, MMC5603NJ magnetometer at
+  # 0x30, LTR-308ALS light sensor at 0x53) are intentionally not declared as board
+  # devices. esp-claw's board manager has no IMU or light-sensor device type, and
+  # lua_module_imu only ships bmi270/icm42670/mpu6050 backends, so supporting them
+  # would require changes under components/. The shared i2c_master peripheral above
+  # is enough: Lua reaches these parts through the generic i2c driver.

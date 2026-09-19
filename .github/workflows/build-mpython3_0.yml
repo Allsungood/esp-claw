@@ -1,7 +1,8 @@
-name: Build ESP-Claw for mpython_pro
+name: Build ESP-Claw for mpython3_0
 
-# Builds the esp-claw firmware for the Labplus mPython Pro (掌控板 3.0) on a Linux
-# runner and publishes a single merged image that can be flashed from any OS.
+# Builds the esp-claw firmware for the Labplus mPython 3.0 / 掌控板 3.0 (board id
+# "mpython3_0") on a Linux runner and publishes a single merged image that can be
+# flashed from any OS.
 #
 # This exists because Windows cannot build this board locally: enabling the LCD
 # pulls in lvgl, freetype, esp-dsp and eight LCD panel drivers, which pushes the
@@ -19,10 +20,10 @@ on:
     branches: [master]
     paths:
       - 'application/edge_agent/boards/labplus/**'
-      - '.github/workflows/build-mpython-pro.yml'
+      - '.github/workflows/build-mpython3_0.yml'
 
 env:
-  CLAW_BOARD: mpython_pro
+  CLAW_BOARD: mpython3_0
   IDF_REF: v5.5.2
 
 jobs:

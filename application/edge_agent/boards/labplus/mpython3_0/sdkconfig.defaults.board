@@ -1,4 +1,4 @@
-# Labplus mPython Pro (掌控板 3.0)
+# Labplus mPython 3.0 / 掌控板 3.0
 # ESP32-S3 with 16 MB quad NOR flash (GD25Q128ES1G) + 8 MB quad SPI PSRAM
 # (ESP-PSRAM64). Quad PSRAM leaves GPIO33..37 free for the onboard LCD and
 # backlight; an octal part would consume them.
@@ -35,8 +35,9 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT=y
 CONFIG_APP_CLAW_LUA_MODULE_LCD=y
 
-# Onboard QMI8658C 6-axis IMU on the shared I2C bus. LUA_MODULE_IMU_CHIP is a
-# choice, so exactly one backend is compiled; the QMI8658 backend is
-# self-contained and needs no vendor component.
-CONFIG_APP_CLAW_LUA_MODULE_IMU=y
-CONFIG_LUA_MODULE_IMU_CHIP_QMI8658=y
+# The onboard I2C sensors (QMI8658C 6-axis, MMC5603NJ magnetometer,
+# LTR-308ALS light sensor) are deliberately not enabled through their Lua
+# modules: lua_module_imu only ships bmi270/icm42670/mpu6050 backends and there
+# is no magnetometer or light-sensor support for these parts, so enabling those
+# modules would mean shipping code outside this board directory. Drive them from
+# Lua with the generic i2c driver instead - see README.md.

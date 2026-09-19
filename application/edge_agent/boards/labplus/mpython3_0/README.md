@@ -1,4 +1,13 @@
-# Labplus mPython Pro (掌控板 3.0)
+# Labplus mPython 3.0 (掌控板 3.0) — board id `mpython3_0`
+
+This board port is **self-contained**: it consists only of the native board
+manager YAML files plus the board-local C file in this directory. It does not
+modify, add or delete anything under `components/`, so it stays compatible with
+upstream esp-claw and survives rebases.
+
+> The board id is `mpython3_0`, not `mpython3.0`. The board manager generator
+> derives the Kconfig symbol as `ESP_BOARD_<NAME>` with `-` mapped to `_`
+> (`gen_bmgr_config_codes.py`), and a `.` is not legal in a Kconfig symbol.
 
 ## Hardware Overview
 
@@ -53,7 +62,7 @@ idf.py bmgr -c ./boards -l
 
 # 2. Select the board. ESP Board Manager picks the chip itself, so do NOT run
 #    `idf.py set-target` (it would wipe sdkconfig and undo the board selection).
-idf.py bmgr -c ./boards -b mpython_pro
+idf.py bmgr -c ./boards -b mpython3_0
 
 # 3. Build
 idf.py build
@@ -117,22 +126,84 @@ because esp-claw's board manager has no matching device type yet:
 
 - The six capacitive touch keys (GPIO9..14).
 - The piezo buzzer (GPIO21).
-- The QMI8658C / MMC5603NJ / LTR-308ALS sensors on the shared I2C bus. The bus
-  itself is declared, so they can be driven from Lua or a capability.
+
+The QMI8658C / MMC5603NJ / LTR-308ALS sensors on the shared I2C bus are
+deliberately **not** declared as board devices either. The bus itself is
+declared, and the generic Lua `i2c` module reaches all of them at runtime, so no
+board-manager device type and no component change is needed:
+
+| Address | Part | Notes |
+|---------|------|-------|
+| `0x6B` | QMI8658C | `WHO_AM_I` (reg `0x00`) reads `0x05`; accel data starts at `0x35` |
+| `0x30` | MMC5603NJ | `ProductID` (reg `0x39`) reads `0x10` |
+| `0x53` | LTR-308ALS | ambient light |
+| `0x10` | ES8388 | audio codec, owned by the `audio_dac` / `audio_adc` devices |
+| `0x7E` | unidentified | responds to a scan, no public datasheet match |
+
+```lua
+local i2c = require("i2c")
+local bus = i2c.new(0, 44, 43)          -- SDA, SCL
+local dev = bus:device(0x6B)            -- QMI8658C
+print(dev:read(0x00, 1))                -- WHO_AM_I -> 0x05
+local raw = dev:read(0x35, 12)          -- accel + gyro burst
+```
 
 ## Display Orientation
 
-`swap_xy: true` plus `mirror_x: true` presents the natively portrait 172x320
-glass as the documented 320x172 landscape. If the image comes up mirrored or
-rotated on real hardware, flip `mirror_x` / `mirror_y` in `board_devices.yaml`;
+The glass is natively 172x320 portrait; `swap_xy: true` presents it as the
+documented 320x172 landscape. The verified working combination is
+
+```yaml
+mirror_x: true
+mirror_y: true
+swap_xy: true
+invert_color: true
+```
+
+which `setup_device.c` applies as `MADCTL = 0xE0` (MY|MX|MV). This was confirmed
+on real hardware two independent ways: driving the panel through the board
+manager and reading the resulting image, and a Lua three-bar test pattern that
+showed the panel applies a 180-degree rotation when only MV is set.
+
+`setup_device.c` also sets a 34-pixel vertical gap (`esp_lcd_panel_set_gap(0,
+(240 - 172) / 2)`). Without it the panel shows a band of uninitialised pixels,
+because the ST7789 frame memory is 240 rows tall while this glass only exposes
+172 of them.
+
+If the image ever comes up mirrored or rotated, flip `mirror_x` / `mirror_y` in
+`board_devices.yaml` (and `MPYTHON3_0_LCD_MADCTL` in `setup_device.c` to match);
 no other LCD setting should need to change.
+
+## Runtime Configuration
+
+There is no board-specific runtime configuration knob. Earlier drafts cycled the
+LCD orientation at runtime from button B and a `/fatfs/lcd.cfg` file; that was
+removed so the port stays purely declarative. Orientation is fixed at build time
+by the YAML above, and anything else that needs to be adjustable (LEDC, ADC, I2C,
+touch, RMT) is reachable through the stock Lua modules, which all accept GPIO
+numbers at call time.
 
 ## Files
 
 | File | Description |
 |------|-------------|
-| `board_info.yaml` | Board identity (chip, manufacturer) |
+| `board_info.yaml` | Board identity (id, chip, manufacturer) |
 | `board_peripherals.yaml` | I2C, SPI, I2S, LEDC, RMT and GPIO pin configuration |
 | `board_devices.yaml` | LCD, brightness, audio codec, LED strip and button devices |
 | `sdkconfig.defaults.board` | Board-level sdkconfig defaults |
-| `setup_device.c` | ST7789 panel factory entry point for the SPI display path |
+| `setup_device.c` | ST7789 panel factory entry point: MADCTL and the 34 px gap |
+
+## Continuous Integration
+
+`.github/workflows/build-mpython3_0.yml` builds this board on a Linux runner and
+publishes a merged flashable image. It exists because Windows cannot build this
+board locally: the LCD pulls in lvgl, freetype, esp-dsp and eight panel drivers,
+which pushes one gcc command line to ~33 kB and past the 32767-character
+`CreateProcess` limit (`ninja: fatal: CreateProcess: The parameter is
+incorrect`). Linux has no such limit.
+
+```bash
+gh workflow run build-mpython3_0.yml --repo Allsungood/esp-claw --ref master
+gh run download <run-id> --repo Allsungood/esp-claw \
+  -n esp-claw-mpython3_0-firmware -D ./fw
+```

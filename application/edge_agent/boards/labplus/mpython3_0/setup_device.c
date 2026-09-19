@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * Board-specific setup for the Labplus mPython Pro (掌控板 3.0).
+ * Board-specific setup for the Labplus mPython 3.0 / 掌控板 3.0.
  *
  * The onboard ST7789 panel has no dedicated reset line and uses the stock esp_lcd
  * ST7789 driver, so the SPI display path only needs the panel factory hook that
@@ -35,13 +35,13 @@
 #include "esp_lcd_panel_st7789.h"
 #include "esp_log.h"
 
-static const char *TAG = "MPYTHON_PRO_SETUP_DEVICE";
+static const char *TAG = "MPYTHON3_0_SETUP_DEVICE";
 
 /*!< Centring offset of the 172-pixel-wide glass in the ST7789 240-pixel frame memory. */
-#define MPYTHON_PRO_LCD_GAP_PX  ((240 - 172) / 2)
+#define MPYTHON3_0_LCD_GAP_PX  ((240 - 172) / 2)
 
 /*!< MADCTL that renders this panel upright: MX|MY|MV, matching board_devices.yaml. */
-#define MPYTHON_PRO_LCD_MADCTL  (0xE0)
+#define MPYTHON3_0_LCD_MADCTL  (0xE0)
 
 /*!< ST7789 command used directly: esp_lcd keeps MADCTL private. */
 #define ST7789_CMD_MADCTL       (0x36)
@@ -59,13 +59,13 @@ esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
         return ret;
     }
 
-    ret = esp_lcd_panel_set_gap(*ret_panel, 0, MPYTHON_PRO_LCD_GAP_PX);
+    ret = esp_lcd_panel_set_gap(*ret_panel, 0, MPYTHON3_0_LCD_GAP_PX);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set ST7789 gap: %s", esp_err_to_name(ret));
         return ret;
     }
 
-    const uint8_t madctl = MPYTHON_PRO_LCD_MADCTL;
+    const uint8_t madctl = MPYTHON3_0_LCD_MADCTL;
     ret = esp_lcd_panel_io_tx_param(io, ST7789_CMD_MADCTL, &madctl, 1);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write ST7789 MADCTL: %s", esp_err_to_name(ret));
@@ -73,6 +73,6 @@ esp_err_t lcd_panel_factory_entry_t(esp_lcd_panel_io_handle_t io,
     }
 
     ESP_LOGI(TAG, "ST7789 ready: MADCTL=0x%02X, y_gap=%d px",
-             MPYTHON_PRO_LCD_MADCTL, MPYTHON_PRO_LCD_GAP_PX);
+             MPYTHON3_0_LCD_MADCTL, MPYTHON3_0_LCD_GAP_PX);
     return ESP_OK;
 }
