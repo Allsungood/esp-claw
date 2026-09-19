@@ -142,10 +142,23 @@ board-manager device type and no component change is needed:
 
 ```lua
 local i2c = require("i2c")
-local bus = i2c.new(0, 44, 43)          -- SDA, SCL
+local bus = i2c.new(0, 44, 43)          -- port 0, SDA, SCL
 local dev = bus:device(0x6B)            -- QMI8658C
-print(dev:read(0x00, 1))                -- WHO_AM_I -> 0x05
-local raw = dev:read(0x35, 12)          -- accel + gyro burst
+print(dev:read_byte(0x00))              -- WHO_AM_I -> 5
+local raw = dev:read(12, 0x35)          -- length first, then reg: accel + gyro
+```
+
+`i2c.new()` reuses the bus the board manager already initialised on GPIO43/44
+("I2C Bus V2 uses the externally initialized bus handle"), so the sensors and the
+ES8388 share one bus without a second driver instance. Note the argument order:
+`read(len[, reg])` and `write(data[, reg])` take the payload first, while
+`read_byte(reg)` / `write_byte(value[, reg])` take the register first.
+
+Verified on hardware against this board definition:
+
+```
+QMI8658 WHO_AM_I =	5
+accel bytes	6
 ```
 
 ## Display Orientation
@@ -182,6 +195,32 @@ removed so the port stays purely declarative. Orientation is fixed at build time
 by the YAML above, and anything else that needs to be adjustable (LEDC, ADC, I2C,
 touch, RMT) is reachable through the stock Lua modules, which all accept GPIO
 numbers at call time.
+
+## Verified On Hardware
+
+The firmware built by CI run
+[35441314655](https://github.com/Allsungood/esp-claw/actions/runs/35441314655)
+(commit `061e315`, ESP-IDF v5.5.2) boots on a real 掌控板 3.0 with no errors.
+The lines that matter for this port:
+
+```text
+I (550) esp_psram: Found 8MB PSRAM device
+I (550) esp_psram: Speed: 80MHz
+I (563) esp_psram: Adding pool of 8161K of PSRAM memory to heap allocator
+I (560) cpu_start: cpu freq: 240000000 Hz
+I (612) BOARD_MANAGER: All peripherals initialized
+I (613) MPYTHON3_0_SETUP_DEVICE: ST7789 ready: MADCTL=0xE0, y_gap=34 px
+I (740) DEV_AUDIO_CODEC: Create esp_codec_dev success, dev:..., chip:es8388
+I (743) DEV_BUTTON: Successfully initialized button: button_a, sub_type: gpio
+I (744) DEV_BUTTON: Successfully initialized button: button_b, sub_type: gpio
+I (821) display_service: started display service: 320x172
+I (6661) cap_lua_rt: Lua runtime ready: registered_modules=25
+I (6674) app_capabilities: Register session manager cap ok (groups=19, caps=73)
+I (6696) claw_agent_mgr: Created root agent id=0
+```
+
+The only warnings are the expected "credentials not configured" notices for the
+IM channels this board does not use.
 
 ## Files
 
